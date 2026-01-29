@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
+import { FileUpload } from '@/components/ui/FileUpload'
 import { FiPackage, FiPlus, FiTrash2 } from 'react-icons/fi'
 
 interface Product {
@@ -19,6 +20,8 @@ interface Product {
 export default function PharmacySetupPage() {
   const router = useRouter()
   const [userType, setUserType] = useState<'hospital' | 'pharmacy'>('pharmacy')
+  const [isImporting, setIsImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     // Contact Information
     phone: '',
@@ -37,6 +40,15 @@ export default function PharmacySetupPage() {
     ],
   })
 
+  // Automatically save draft whenever form data changes so refresh doesn't lose data
+  useEffect(() => {
+    try {
+      localStorage.setItem('pharmacySetup', JSON.stringify(formData))
+    } catch {
+      // Ignore write errors (e.g. storage disabled)
+    }
+  }, [formData])
+
   // Check user type and redirect hospital users
   useEffect(() => {
     const userData = localStorage.getItem('user')
@@ -52,6 +64,87 @@ export default function PharmacySetupPage() {
       }
     }
   }, [router])
+
+  // Load saved pharmacy setup when page mounts so data persists on refresh
+  useEffect(() => {
+    try {
+      const savedDraft = localStorage.getItem('pharmacySetup')
+      if (savedDraft) {
+        const parsed = JSON.parse(savedDraft)
+        // Merge with defaults to avoid missing fields
+        setFormData((prev) => ({
+          ...prev,
+          ...parsed,
+          products: Array.isArray(parsed.products) && parsed.products.length > 0 ? parsed.products : prev.products,
+        }))
+      }
+    } catch {
+      // If anything goes wrong with parsing, just use defaults
+    }
+  }, [])
+
+  const handleImportFile = (file: File | null) => {
+    if (!file) {
+      return
+    }
+    setIsImporting(true)
+    setImportError(null)
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const text = reader.result as string
+        const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0)
+        if (lines.length <= 1) {
+          throw new Error('File appears to be empty.')
+        }
+
+        // Expect header: name,category,description,price,inStock
+        const [, ...rows] = lines
+        const importedProducts: Product[] = rows
+          .map((line) => line.split(','))
+          .filter((cols) => cols.length >= 4) // name, category, description, price (inStock optional)
+          .map((cols) => {
+            const [name, category, description, price, inStockRaw] = cols.map((c) => c.trim())
+            const inStockValue = (inStockRaw || 'true').toLowerCase()
+            const inStock =
+              inStockValue === 'true' ||
+              inStockValue === '1' ||
+              inStockValue === 'yes' ||
+              inStockValue === 'y' ||
+              inStockValue === 'in stock'
+            return {
+              name,
+              category,
+              description,
+              price,
+              inStock,
+            } as Product
+          })
+          .filter((p) => p.name && p.category && p.price)
+
+        if (!importedProducts.length) {
+          throw new Error('No valid products found in file.')
+        }
+
+        setFormData((prev) => ({
+          ...prev,
+          products: importedProducts,
+        }))
+      } catch (err: any) {
+        setImportError(err?.message || 'Failed to import products. Please check the file format.')
+      } finally {
+        setIsImporting(false)
+      }
+    }
+
+    reader.onerror = () => {
+      setIsImporting(false)
+      setImportError('Could not read the file. Please try again.')
+    }
+
+    reader.readAsText(file)
+  }
 
   const handleProductChange = (
     index: number,
@@ -136,17 +229,44 @@ export default function PharmacySetupPage() {
 
           {/* Products & Information */}
           <Card className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
+              <div className="max-w-xl">
                 <h2 className="text-xl font-semibold text-neutral-dark">Products & Information</h2>
                 <p className="text-sm text-neutral-gray">
-                  Add key products and services that will be featured on your pharmacy website.
+                  You can add products one by one or import many at once from a CSV file.
+                </p>
+                <p className="text-xs text-neutral-gray mt-2">
+                  CSV format:&nbsp;
+                  <span className="font-mono">
+                    name, category, description, price, inStock
+                  </span>
+                  . You can download a sample file from{' '}
+                  <a
+                    href="/sample-pharmacy-products.csv"
+                    className="text-primary underline"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    here
+                  </a>
+                  .
                 </p>
               </div>
-              <Button type="button" variant="secondary" onClick={addProduct}>
-                <FiPlus className="mr-2" />
-                Add Product
-              </Button>
+              <div className="flex flex-col gap-3 w-full sm:w-auto">
+                <Button type="button" variant="secondary" onClick={addProduct}>
+                  <FiPlus className="mr-2" />
+                  Add Product
+                </Button>
+                <FileUpload
+                  label="Import products (CSV)"
+                  accept=".csv"
+                  onChange={handleImportFile}
+                  error={importError || undefined}
+                />
+                {isImporting && (
+                  <p className="text-xs text-neutral-gray">Importing products...</p>
+                )}
+              </div>
             </div>
             <div className="space-y-6">
               {formData.products.map((product, index) => (

@@ -1,0 +1,21 @@
+name,category,description,price,inStock
+Paracetamol 500mg Tablets,Pain Relief,Effective relief from mild to moderate pain,$4.99,true
+Ibuprofen 200mg Capsules,Pain Relief,Anti-inflammatory pain reliever suitable for adults,$6.49,true
+Amoxicillin 500mg,Prescription Antibiotics,Broad-spectrum antibiotic for bacterial infections,$18.90,true
+Vitamin C 1000mg,Vitamins & Supplements,Immune support effervescent tablets,$9.99,true
+Multivitamin Gummies,Vitamins & Supplements,Daily multivitamin gummies for adults,$12.50,true
+Omeprazole 20mg,Stomach & Digestion,Helps reduce stomach acid and heartburn,$11.75,true
+Loratadine 10mg,Allergy,Non-drowsy allergy relief tablets,$7.25,true
+Saline Nasal Spray,Cold & Flu,Gentle nasal spray for congestion relief,$3.99,true
+Blood Pressure Monitor,Medical Devices,Automatic upper arm blood pressure monitor,$49.00,true
+Digital Thermometer,Medical Devices,Fast and accurate digital thermometer,$14.99,true
+Baby Diapers Size 3,Baby Care,Soft and absorbent diapers for babies 4-9kg,$22.99,true
+Baby Wipes Sensitive,Baby Care,Fragrance-free wipes for sensitive skin,$5.99,true
+Hand Sanitizer 500ml,Personal Care,Alcohol-based hand sanitizer gel,$4.49,true
+Moisturizing Hand Cream,Personal Care,Hydrating cream for dry and cracked hands,$6.99,true
+COVID-19 Antigen Test Kit,Tests,Rapid self-test kit for COVID-19 detection,$8.99,true
+Glucometer Test Strips,Diabetes Care,Strips compatible with standard glucometers,$24.50,true
+Insulin Syringes 1ml,Diabetes Care,Sterile single-use insulin syringes,$15.75,true
+Anti-Dandruff Shampoo,Hair Care,Clinically proven anti-dandruff formula,$10.50,true
+Herbal Cough Syrup,Cold & Flu,Soothing herbal cough syrup for dry cough,$7.99,true
+Calcium + Vitamin D Tablets,Bone Health,Supports strong bones and teeth,$13.40,true

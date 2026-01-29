@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -9,13 +9,88 @@ import { FiLogOut } from 'react-icons/fi'
 
 export default function SettingsPage() {
   const [profileData, setProfileData] = useState({
-    name: 'John Doe',
-    email: 'john@example.com',
-    phone: '+1 (555) 123-4567',
+    name: '',
+    email: '',
   })
 
-  const [subscriptionPlan, setSubscriptionPlan] = useState('professional')
+  const [subscriptionPlan, setSubscriptionPlan] = useState<{
+    templateName: string
+    price: number
+    startedAt: string
+    renewAt: string
+  } | null>(null)
   const [domain, setDomain] = useState('myhospital.medify.com')
+
+  // Load signed-in user info from localStorage so real name/email appear
+  useEffect(() => {
+    try {
+      const userData = localStorage.getItem('user')
+      if (!userData) return
+
+      const user = JSON.parse(userData)
+      const name = user.name || ''
+      const email = user.email || user.username || ''
+
+      setProfileData((prev) => ({
+        ...prev,
+        name,
+        email,
+      }))
+    } catch {
+      // If parsing fails, keep defaults
+    }
+  }, [])
+
+  // Load pharmacy template subscription info (if any) from localStorage
+  useEffect(() => {
+    try {
+      const templateIdRaw = localStorage.getItem('selectedTemplate')
+      const priceRaw = localStorage.getItem('totalPrice')
+      const startedRaw = localStorage.getItem('templateSubscriptionStartedAt')
+
+      if (!templateIdRaw || !priceRaw || !startedRaw) {
+        setSubscriptionPlan(null)
+        return
+      }
+
+      const templateId = Number(templateIdRaw)
+      const price = Number(priceRaw)
+      const startedDate = new Date(startedRaw)
+      if (Number.isNaN(startedDate.getTime())) {
+        setSubscriptionPlan(null)
+        return
+      }
+
+      // One-month renewal period
+      const renewDate = new Date(startedDate)
+      renewDate.setMonth(renewDate.getMonth() + 1)
+
+      const formatDate = (d: Date) =>
+        d.toLocaleDateString(undefined, {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        })
+
+      const templateName =
+        templateId === 1
+          ? 'Modern Pharmacy'
+          : templateId === 2
+          ? 'Classic Pharmacy'
+          : templateId === 3
+          ? 'Minimal Pharmacy'
+          : `Template #${templateId}`
+
+      setSubscriptionPlan({
+        templateName,
+        price,
+        startedAt: formatDate(startedDate),
+        renewAt: formatDate(renewDate),
+      })
+    } catch {
+      setSubscriptionPlan(null)
+    }
+  }, [])
 
   const handleProfileSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -50,16 +125,6 @@ export default function SettingsPage() {
             value={profileData.email}
             onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
           />
-          <Input
-            label="Phone"
-            value={profileData.phone}
-            onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
-          />
-          <div className="flex justify-end">
-            <Button variant="primary" type="submit">
-              Save Changes
-            </Button>
-          </div>
         </form>
       </Card>
 
@@ -67,17 +132,29 @@ export default function SettingsPage() {
       <Card className="p-6">
         <h2 className="text-xl font-semibold text-neutral-dark mb-6">Subscription Plan</h2>
         <div className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-neutral-light rounded-lg">
-            <div>
-              <h3 className="font-semibold text-neutral-dark">Professional Plan</h3>
-              <p className="text-sm text-neutral-gray">$79/month</p>
-            </div>
-            <Button variant="secondary">Change Plan</Button>
-          </div>
-          <div className="text-sm text-neutral-gray">
-            <p>Next billing date: January 15, 2024</p>
-            <p>Auto-renewal: Enabled</p>
-          </div>
+          {subscriptionPlan ? (
+            <>
+              <div className="flex items-center justify-between p-4 bg-neutral-light rounded-lg">
+                <div>
+                  <h3 className="font-semibold text-neutral-dark">
+                    {subscriptionPlan.templateName}
+                  </h3>
+                  <p className="text-sm text-neutral-gray">
+                    ${subscriptionPlan.price.toFixed(2)} / month
+                  </p>
+                </div>
+              </div>
+              <div className="text-sm text-neutral-gray">
+                <p>Subscribed on: {subscriptionPlan.startedAt}</p>
+                <p>Next renewal date: {subscriptionPlan.renewAt}</p>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-neutral-gray">
+              You don&apos;t have an active pharmacy template subscription yet. Choose a template
+              from the Pharmacy Templates page.
+            </p>
+          )}
         </div>
       </Card>
 

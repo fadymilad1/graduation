@@ -53,18 +53,11 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const dropdownMenuRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 })
   const searchRef = useRef<HTMLDivElement>(null)
   const searchDropdownRef = useRef<HTMLDivElement>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchItem[]>([])
   const [isSearchOpen, setIsSearchOpen] = useState(false)
-  const [searchDropdownPosition, setSearchDropdownPosition] = useState({
-    top: 0,
-    left: 0,
-    width: 0,
-  })
 
   const searchItems: SearchItem[] = [
     {
@@ -188,53 +181,8 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
     }
   }, [isSearchOpen])
 
-  const updateSearchDropdownPosition = () => {
-    if (!searchRef.current) return
-    const rect = searchRef.current.getBoundingClientRect()
-    setSearchDropdownPosition({
-      top: rect.bottom + 8,
-      left: rect.left,
-      width: rect.width,
-    })
-  }
-
-  useEffect(() => {
-    if (isSearchOpen) {
-      updateSearchDropdownPosition()
-      window.addEventListener('resize', updateSearchDropdownPosition)
-      window.addEventListener('scroll', updateSearchDropdownPosition, true)
-    }
-
-    return () => {
-      window.removeEventListener('resize', updateSearchDropdownPosition)
-      window.removeEventListener('scroll', updateSearchDropdownPosition, true)
-    }
-  }, [isSearchOpen])
-
   const unreadCount = notifications.filter((notification) => !notification.read).length
 
-  const updateDropdownPosition = () => {
-    if (!triggerRef.current) return
-    const rect = triggerRef.current.getBoundingClientRect()
-    const dropdownWidth = 288 // matching w-72
-    setDropdownPosition({
-      top: rect.bottom + 8,
-      left: rect.right - dropdownWidth,
-    })
-  }
-
-  useEffect(() => {
-    if (isDropdownOpen) {
-      updateDropdownPosition()
-      window.addEventListener('resize', updateDropdownPosition)
-      window.addEventListener('scroll', updateDropdownPosition, true)
-    }
-
-    return () => {
-      window.removeEventListener('resize', updateDropdownPosition)
-      window.removeEventListener('scroll', updateDropdownPosition, true)
-    }
-  }, [isDropdownOpen])
 
   const toggleDropdown = () => {
     setIsDropdownOpen((prev) => !prev)
@@ -307,7 +255,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
       >
         <FiMenu size={24} />
       </button>
-      <div className="flex-1 max-w-md hidden sm:block" ref={searchRef}>
+      <div className="flex-1 max-w-md hidden sm:block relative" ref={searchRef}>
         <form className="relative" onSubmit={handleSearchSubmit}>
           <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-neutral-gray" />
           <input
@@ -320,12 +268,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
           {isSearchOpen && (
             <div
               ref={searchDropdownRef}
-              className="fixed bg-white border border-neutral-border rounded-lg shadow-lg z-40"
-              style={{
-                top: searchDropdownPosition.top,
-                left: searchDropdownPosition.left,
-                width: searchDropdownPosition.width,
-              }}
+              className="absolute left-0 right-0 mt-2 bg-white border border-neutral-border rounded-lg shadow-lg z-40"
             >
               {searchResults.length === 0 ? (
                 <p className="text-sm text-neutral-gray px-4 py-3">No matches found.</p>
@@ -352,7 +295,6 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
       <div className="flex items-center gap-2 sm:gap-4 ml-auto">
         <div className="relative" ref={dropdownRef}>
           <button
-            ref={triggerRef}
             onClick={toggleDropdown}
             className="relative p-2 text-neutral-gray hover:text-neutral-dark transition-colors"
             aria-label="Notifications"
@@ -365,8 +307,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
           {isDropdownOpen && (
             <div
               ref={dropdownMenuRef}
-              className="fixed w-72 bg-white border border-neutral-border rounded-lg shadow-lg z-50"
-              style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
+              className="fixed top-16 right-4 w-72 bg-white border border-neutral-border rounded-lg shadow-lg z-50"
             >
               <div className="flex items-center justify-between p-3 border-b border-neutral-border">
                 <div>
@@ -383,7 +324,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
                   Mark all read
                 </button>
               </div>
-              <div className="max-h-64 overflow-y-auto">
+              <div>
                 {notifications.length === 0 ? (
                   <p className="text-sm text-center text-neutral-gray py-6">No notifications yet.</p>
                 ) : (

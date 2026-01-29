@@ -16,6 +16,7 @@ export default function BusinessInfoPage() {
   const [isPublishing, setIsPublishing] = useState(false)
   const [isPublished, setIsPublished] = useState(false)
   const [userType, setUserType] = useState<'hospital' | 'pharmacy'>('hospital')
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     logo: null as File | null,
@@ -47,6 +48,38 @@ export default function BusinessInfoPage() {
       }
     }
   }, [])
+
+  // Load saved business info when page mounts so data persists on refresh
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('businessInfo')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        setFormData((prev) => ({
+          ...prev,
+          ...parsed,
+          // Never restore logo as a File from storage; keep it null here
+          logo: null,
+          workingHours: {
+            ...prev.workingHours,
+            ...(parsed.workingHours || {}),
+          },
+        }))
+      }
+    } catch {
+      // Ignore parse errors and keep defaults
+    }
+  }, [])
+
+  // Auto-save business info draft whenever the user types
+  useEffect(() => {
+    try {
+      const { logo, ...rest } = formData
+      localStorage.setItem('businessInfo', JSON.stringify(rest))
+    } catch {
+      // Ignore storage write errors
+    }
+  }, [formData])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -124,8 +157,28 @@ export default function BusinessInfoPage() {
               <FileUpload
                 label="Logo"
                 accept="image/*"
-                onChange={(file) => setFormData({ ...formData, logo: file })}
+                onChange={(file) => {
+                  setFormData({ ...formData, logo: file })
+                  if (file) {
+                    const reader = new FileReader()
+                    reader.onloadend = () => {
+                      setLogoPreview(reader.result as string)
+                    }
+                    reader.readAsDataURL(file)
+                  } else {
+                    setLogoPreview(null)
+                  }
+                }}
               />
+              {logoPreview && (
+                <div className="mt-2 flex items-center gap-3">
+                  <span className="text-sm text-neutral-gray">Logo preview:</span>
+                  <div className="h-12 w-12 rounded-md border border-neutral-border overflow-hidden flex items-center justify-center bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={logoPreview} alt="Logo preview" className="h-full w-full object-contain" />
+                  </div>
+                </div>
+              )}
               <Textarea
                 label="About"
                 placeholder="Tell us about your business..."

@@ -13,18 +13,18 @@ export default function LandingPage() {
   const templates = [
     {
       name: 'Modern Pharmacy',
-      description: 'Clean and modern design perfect for modern pharmacies',
-      image: '/modern pharmcy.jpg',
+      description: 'Clean and modern design',
+      image: '/first_templete.png',
     },
     {
       name: 'Classic Pharmacy',
       description: 'Traditional design with professional look',
-      image: '/classic pharmcy.jpg',
+      image: '/sec_temp.png',  
     },
     {
       name: 'Minimal Pharmacy',
       description: 'Minimalist design focusing on products',
-      image: '/Minimal Pharmacy.jpeg',
+      image: '/third_temp.png',
     },
   ]
 
@@ -32,30 +32,30 @@ export default function LandingPage() {
     { 
       number: 1, 
       title: 'Choose Type', 
-      description: 'Select Hospital or Pharmacy',
-      hospital: 'Select Hospital',
-      pharmacy: 'Select Pharmacy',
+      description: 'Choose what kind of medical website you want to build.',
+      hospital: 'Select Hospital as your website type',
+      pharmacy: 'Select Pharmacy as your website type',
     },
     { 
       number: 2, 
       title: 'Select Features / Template', 
-      description: 'Choose features (Hospital) or pick a template (Pharmacy)',
-      hospital: 'Select features with pricing',
-      pharmacy: 'Choose template & pay',
+      description: 'Customize the experience for your patients and customers.',
+      hospital: 'Pick hospital features and layout with clear pricing',
+      pharmacy: 'Choose your pharmacy template and review included features',
     },
     { 
       number: 3, 
       title: 'Payment', 
-      description: 'Pay via Visa or Fawry',
-      hospital: 'Pay for selected features',
-      pharmacy: 'Pay for template',
+      description: 'Secure online payment with Visa or Fawry.',
+      hospital: 'Securely pay for the features you selected',
+      pharmacy: 'Securely pay for your chosen template',
     },
     { 
       number: 4, 
       title: 'Enter Info & Publish', 
-      description: 'Add business info and go live',
-      hospital: 'Fill business info & publish',
-      pharmacy: 'Fill business info & publish',
+      description: 'Add your details and launch your website.',
+      hospital: 'Add your hospital information, review, and publish your site',
+      pharmacy: 'Add your pharmacy details, customize content, and publish',
     },
   ]
 
@@ -362,7 +362,7 @@ export default function LandingPage() {
           <h2 className="text-2xl sm:text-3xl font-bold text-center text-neutral-dark mb-8 sm:mb-12">
             Pharmacy Templates
           </h2>
-          {/* Mobile: Single template with swipe */}
+          {/* Mobile: Single template with swipe (no inline styles) */}
           <div className="block md:hidden mb-6">
             <div
               className="overflow-hidden"
@@ -370,38 +370,28 @@ export default function LandingPage() {
               onTouchMove={handleTemplateTouchMove}
               onTouchEnd={handleTemplateTouchEnd}
             >
-              <div
-                className="flex transition-transform duration-300 ease-in-out"
-                // eslint-disable-next-line react/forbid-dom-props
-                // Inline styles required for dynamic transform based on state
-                style={{
-                  transform: `translateX(-${currentTemplate * 100}%)`,
-                }}
-              >
-                {templates.map((template, index) => (
-                  <div key={index} className="min-w-full px-2">
-                    <Card
-                      className={`${index === currentTemplate ? 'ring-2 ring-primary' : ''}`}
-                      onClick={() => setCurrentTemplate(index)}
-                    >
-                      <div className="h-64 bg-neutral-light rounded-t-lg flex items-center justify-center relative overflow-hidden w-full max-w-full">
-                        <Image
-                          src={template.image}
-                          alt={template.name}
-                          fill
-                          className="object-contain bg-neutral-light"
-                          sizes="100vw"
-                        />
-                      </div>
-                      <div className="p-6">
-                        <h3 className="text-xl font-semibold text-neutral-dark mb-2">
-                          {template.name}
-                        </h3>
-                        <p className="text-neutral-gray">{template.description}</p>
-                      </div>
-                    </Card>
-                  </div>
-                ))}
+              <div className="px-2">
+                {templates[currentTemplate] && (
+                  <Card className="ring-2 ring-primary">
+                    <div className="h-64 bg-neutral-light rounded-t-lg flex items-center justify-center relative overflow-hidden w-full max-w-full">
+                      <Image
+                        src={templates[currentTemplate].image}
+                        alt={templates[currentTemplate].name}
+                        fill
+                        className="object-contain bg-neutral-light"
+                        sizes="100vw"
+                      />
+                    </div>
+                    <div className="p-6">
+                      <h3 className="text-xl font-semibold text-neutral-dark mb-2">
+                        {templates[currentTemplate].name}
+                      </h3>
+                      <p className="text-neutral-gray">
+                        {templates[currentTemplate].description}
+                      </p>
+                    </div>
+                  </Card>
+                )}
               </div>
             </div>
           </div>
@@ -472,13 +462,13 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-center">
             <div>
               <h2 className="text-3xl font-bold text-neutral-dark mb-6">
-                AI-Powered Assistant
+                AI-Powered Assistant for Patients
               </h2>
               <p className="text-lg text-neutral-gray mb-6">
-                Get intelligent help with content creation, SEO optimization, and website management. Our AI assistant understands medical terminology and helps you create professional content.
+                Help your patients get instant, accurate answers to their questions 24/7. Our AI assistant understands medical terminology and supports them with clear, friendly information about services, medications, and appointments.
               </p>
               <ul className="space-y-3">
-                {['Content Generation', 'SEO Optimization', 'Appointment Management', 'Patient Communication'].map((feature) => (
+                {['Answer common patient questions', 'Guide patients to the right department or doctor', 'Support appointment booking and follow-up', 'Explain medications and pharmacy services in simple language'].map((feature) => (
                   <li key={feature} className="flex items-center gap-3">
                     <FiCheck className="text-success" size={20} />
                     <span className="text-neutral-dark">{feature}</span>
@@ -550,7 +540,7 @@ export default function LandingPage() {
           <h2 className="text-2xl sm:text-3xl font-bold text-center text-neutral-dark mb-8 sm:mb-12">
             What Our Customers Say
           </h2>
-          {/* Mobile: Single testimonial with swipe */}
+          {/* Mobile: Single testimonial with swipe (no inline styles) */}
           <div className="block md:hidden mb-8">
             <div
               className="overflow-hidden"
@@ -558,34 +548,34 @@ export default function LandingPage() {
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
             >
-              <div
-                className="flex transition-transform duration-300 ease-in-out"
-                // eslint-disable-next-line react/forbid-dom-props
-                // Inline styles required for dynamic transform based on state
-                style={{
-                  transform: `translateX(-${testimonialIndex * 100}%)`,
-                }}
-              >
-                {testimonials.map((testimonial, index) => (
-                  <div key={`${testimonial?.name}-${index}`} className="min-w-full px-2">
-                    <Card className="p-6">
-                      <div className="flex gap-1 mb-4">
-                        {[...(testimonial?.rating ? Array(testimonial.rating) : [])].map((_, i) => (
+              <div className="px-2">
+                {testimonials[testimonialIndex] && (
+                  <Card className="p-6">
+                    <div className="flex gap-1 mb-4">
+                      {Array(
+                        testimonials[testimonialIndex].rating
+                          ? testimonials[testimonialIndex].rating
+                          : 0
+                      )
+                        .fill(null)
+                        .map((_, i) => (
                           <FiStar key={i} className="text-warning fill-warning" />
                         ))}
-                      </div>
-                      <p className="text-neutral-gray mb-6">{testimonial?.content}</p>
-                      <div>
-                        <p className="font-semibold text-neutral-dark">
-                          {testimonial?.name}
-                        </p>
-                        <p className="text-sm text-neutral-gray">
-                          {testimonial?.role}, {testimonial?.company}
-                        </p>
-                      </div>
-                    </Card>
-                  </div>
-                ))}
+                    </div>
+                    <p className="text-neutral-gray mb-6">
+                      {testimonials[testimonialIndex].content}
+                    </p>
+                    <div>
+                      <p className="font-semibold text-neutral-dark">
+                        {testimonials[testimonialIndex].name}
+                      </p>
+                      <p className="text-sm text-neutral-gray">
+                        {testimonials[testimonialIndex].role},{' '}
+                        {testimonials[testimonialIndex].company}
+                      </p>
+                    </div>
+                  </Card>
+                )}
               </div>
             </div>
           </div>

@@ -38,29 +38,29 @@ export default function PharmacyTemplatesPage() {
     {
       id: 1,
       name: 'Modern Pharmacy',
-      description: 'Clean and modern design perfect for modern pharmacies',
-      image: '/modern pharmcy.jpg',
+      description: 'Clean and modern design',
+      image: '/first_temp.png',
       price: 299,
       hasAI: true,
-      features: ['Product Catalog', 'Online Ordering', 'Prescription Management', 'Blog', 'AI Chatbot'],
+      features: ['Modern design', 'Online ordering', 'Featured products', 'AI chatbot', 'Delivery checkout'],
     },
     {
       id: 2,
       name: 'Classic Pharmacy',
       description: 'Traditional design with professional look',
-      image: '/classic pharmcy.jpg',
+      image: '/sec_temp.png',
       price: 199,
       hasAI: true,
-      features: ['Product Showcase', 'Services Page', 'Contact Form', 'Location Map', 'AI Chatbot'],
+      features: ['Classic design', 'Service pages', 'Product showcase', 'Location map', 'Simple checkout'],
     },
     {
       id: 3,
       name: 'Minimal Pharmacy',
       description: 'Minimalist design focusing on products',
-      image: '/Minimal Pharmacy.jpeg',
+      image: '/third_temp.png',
       price: 149,
       hasAI: false,
-      features: ['Simple Layout', 'Fast Loading', 'Mobile Optimized', 'SEO Ready'],
+      features: ['Clean layout', 'Product focused', 'Quick setup', 'Easy checkout'],
     },
   ]
 
@@ -81,6 +81,9 @@ export default function PharmacyTemplatesPage() {
       const selected = templates.find((t) => t.id === templateToPay)
       if (selected) {
         localStorage.setItem('totalPrice', selected.price.toString())
+        // Store subscription start date for billing info (1 month period)
+        const now = new Date().toISOString()
+        localStorage.setItem('templateSubscriptionStartedAt', now)
       }
 
       // Persist selection to backend (best-effort; user stays unblocked if it fails)

@@ -41,12 +41,14 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           accept={accept}
           onChange={handleFileChange}
           className="hidden"
+          aria-label={label ? `${label} file upload` : 'File upload'}
+          title={label ? `${label} file upload` : 'File upload'}
         />
         <p className="text-neutral-gray">
           Click to upload or drag and drop
         </p>
         <p className="text-sm text-neutral-gray mt-1">
-          PNG, JPG, GIF up to 10MB
+          CSV, Excel file up to 10MB
         </p>
       </div>
       {error && (

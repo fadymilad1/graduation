@@ -1,14 +1,5 @@
-[variables]
-NIXPACKS_PYTHON_VERSION = "3.11"
-
-[phases.setup]
-nixPkgs = ["python311", "postgresql.dev", "gcc", "gnumake"]
-
-[phases.install]
-cmds = ["python3 -m pip install --upgrade pip setuptools wheel", "python3 -m pip install -r requirements.txt"]
-
 [phases.build]
-cmds = ["cd backend && python3 manage.py collectstatic --no-input"]
+cmds = ["cd backend && python manage.py collectstatic --no-input"]
 
 [start]
-cmd = "cd backend && python3 manage.py migrate && python3 -m gunicorn medify_backend.wsgi:application --bind 0.0.0.0:$PORT"
+cmd = "cd backend && python manage.py migrate && gunicorn medify_backend.wsgi:application --bind 0.0.0.0:$PORT"

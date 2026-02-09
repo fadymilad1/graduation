@@ -71,7 +71,8 @@ function SignupForm() {
 
     try {
       // Call backend API for signup
-      const response = await fetch('http://localhost:8000/api/auth/signup/', {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
+      const response = await fetch(`${API_URL}/auth/signup/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

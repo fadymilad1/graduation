@@ -2,10 +2,10 @@
 nixPkgs = ["python311", "postgresql"]
 
 [phases.install]
-cmds = ["cd backend && pip install -r requirements.txt"]
+cmds = ["chmod +x build.sh && ./build.sh"]
 
 [phases.build]
 cmds = ["cd backend && python manage.py collectstatic --no-input"]
 
 [start]
-cmd = "cd backend && python manage.py migrate && gunicorn medify_backend.wsgi:application --bind 0.0.0.0:$PORT"
+cmd = "chmod +x start.sh && ./start.sh"

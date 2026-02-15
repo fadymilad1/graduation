@@ -2,6 +2,7 @@ from django.db import models
 from .website import WebsiteSetup
 import uuid
 
+
 class BusinessInfo(models.Model):
     """Business information for the website"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -10,7 +11,7 @@ class BusinessInfo(models.Model):
         on_delete=models.CASCADE,
         related_name='business_info'
     )
-    
+
     name = models.CharField(max_length=255)
     logo = models.ImageField(upload_to='logos/', null=True, blank=True)
     about = models.TextField(blank=True)
@@ -25,7 +26,7 @@ class BusinessInfo(models.Model):
         help_text="Store working hours as JSON: {monday: {open, close, closed}, ...}"
     )
     is_published = models.BooleanField(default=False)
-    
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -34,4 +35,3 @@ class BusinessInfo(models.Model):
 
     class Meta:
         db_table = 'business_info'
-

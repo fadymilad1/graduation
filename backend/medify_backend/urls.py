@@ -8,6 +8,7 @@ from django.conf.urls.static import static
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 
+
 @require_http_methods(["GET"])
 def root_view(request):
     """Root view redirecting to API"""
@@ -18,6 +19,7 @@ def root_view(request):
         'status': 'running'
     })
 
+
 urlpatterns = [
     path('', root_view, name='root'),
     path('admin/', admin.site.urls),
@@ -27,4 +29,3 @@ urlpatterns = [
 # Serve media files in development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-

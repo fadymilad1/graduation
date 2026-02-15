@@ -10,7 +10,7 @@ class UserAdmin(BaseUserAdmin):
     list_filter = ['business_type', 'is_active', 'created_at']
     search_fields = ['email', 'name']
     ordering = ['-created_at']
-    
+
     fieldsets = BaseUserAdmin.fieldsets + (
         ('Additional Info', {'fields': ('name', 'business_type')}),
     )
@@ -32,4 +32,3 @@ class BusinessInfoAdmin(admin.ModelAdmin):
     list_filter = ['is_published', 'created_at']
     search_fields = ['name', 'contact_email', 'contact_phone']
     readonly_fields = ['id', 'created_at', 'updated_at']
-

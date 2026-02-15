@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from api.models import BusinessInfo
+
+
 class BusinessInfoSerializer(serializers.ModelSerializer):
     """Serializer for BusinessInfo model"""
     logo_url = serializers.SerializerMethodField()

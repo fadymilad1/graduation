@@ -4,33 +4,91 @@ This document provides guidelines for agents working on the Medify backend codeb
 
 ## Project Overview
 
+**Medify** is a website builder platform that creates customized websites for medical businesses:
+- **Hospital websites** with CRM features (doctor management, departments, appointments, patient portal)
+- **Pharmacy websites** as e-commerce platforms (product catalog, inventory, orders)
+
+### Tech Stack
 - **Framework**: Django 4.2.7 with Django REST Framework 3.14.0
 - **Language**: Python
 - **Database**: SQLite (dev) / PostgreSQL (prod)
 - **Authentication**: JWT via djangorestframework-simplejwt
 
+### Business Model
+- Users sign up and select business type (hospital or pharmacy)
+- System creates a WebsiteSetup with configurable features
+- Users customize BusinessInfo (branding, contact, location)
+- Feature-based pricing with payment integration
+- Each user gets a unique subdomain for their generated website
+
 ## Project Structure
+
+### Current Structure (Single App)
 
 ```
 backend/
-├── api/                    # Main Django app
+├── api/                          # Main Django app (will be split into core/hospitals/pharmacies)
 │   ├── migrations/
-│   ├── models/             # Database models (user.py, business.py, etc.)
-│   ├── serializers/        # DRF serializers
+│   ├── models/                   # Database models
+│   │   ├── user.py              # ✅ Active: Custom user with business_type
+│   │   ├── website.py           # ✅ Active: WebsiteSetup with features & pricing
+│   │   ├── business.py          # ✅ Active: BusinessInfo (branding, contact, location)
+│   │   ├── department.py        # 🚧 Stub: Hospital departments (needs migration)
+│   │   ├── doctor.py            # 🚧 Stub: Hospital doctors (needs migration)
+│   │   ├── product.py           # 🚧 Stub: Pharmacy products (needs migration)
+│   │   ├── payment.py           # 🚧 Stub: Payment transactions (needs migration)
+│   │   └── features.py          # ⚠️ Deprecated: Replaced by WebsiteSetup fields
+│   ├── serializers/              # DRF serializers
+│   │   ├── user_serializers.py
+│   │   ├── business_serializers.py
+│   │   └── website_serializers.py
+│   ├── views/                    # API views
+│   │   ├── auth.py              # Signup, login, current user
+│   │   ├── business_info.py     # Business info CRUD
+│   │   └── website_setup.py     # Website setup CRUD
 │   ├── admin.py
 │   ├── apps.py
-│   ├── urls.py
-│   └── views.py
-├── medify_backend/         # Django project settings
+│   └── urls.py
+├── medify_backend/               # Django project settings
 │   ├── settings.py
 │   ├── urls.py
 │   ├── asgi.py
 │   └── wsgi.py
+├── Agents/
+│   ├── AGENTS.md                # This file
+│   └── Patterns.md              # Design pattern recommendations
 ├── manage.py
-├── pyproject.toml         # pyright config
+├── db.sqlite3
+├── pyproject.toml               # pyright config
 ├── requirements.txt
-├── .flake8               # flake8 config (ignores E501)
-└── setup.cfg             # pycodestyle config
+├── .flake8                      # flake8 config (ignores E501)
+└── setup.cfg                    # pycodestyle config
+```
+
+### Recommended Future Structure (Multi-App)
+
+As the project grows, split into domain-specific apps:
+
+```
+backend/
+├── core/                        # Shared models & auth
+│   ├── models/                  # User, WebsiteSetup, BusinessInfo, Payment
+│   ├── serializers/
+│   ├── views/
+│   ├── services/                # Business logic layer
+│   ├── permissions/             # Custom permission classes
+│   └── selectors/               # Query logic abstraction
+├── hospitals/                   # Hospital-specific features
+│   ├── models/                  # Department, Doctor, Appointment, Patient
+│   ├── serializers/
+│   ├── views/
+│   └── services/                # CRM business logic
+├── pharmacies/                  # Pharmacy-specific features
+│   ├── models/                  # Product, Inventory, Order, Cart
+│   ├── serializers/
+│   ├── views/
+│   └── services/                # E-commerce business logic
+└── medify_backend/              # Project settings
 ```
 
 ## Build/Lint/Test Commands
@@ -225,23 +283,70 @@ Follow REST conventions:
 @action(detail=False, methods=['post'])
 def publish(self, request):
     """Publish the website."""
-    business_info = self.get_object()
-    business_info.is_published = True
-    business_info.save()
-    serializer = self.get_serializer(business_info)
-    return Response(serializer.data)
+    business_info = self.get_obj (e.g., `appointment.py`)
+2. Add to `api/models/__init__.py`
+3. Run `python manage.py makemigrations`
+4. Review migration file for correctness
+5. Run `python manage.py migrate`
+
+### Creating a New Serializer
+1. Add to appropriate file in `api/serializers/` (or create new file)
+2. Export in `api/serializers/__init__.py`
+3. Follow read/write serializer split pattern for complex models
+
+### Creating a New ViewSet
+1. Add viewset to appropriate file in `api/views/`
+2. Export in `api/views/__init__.py`
+3. Register in `api/urls.py` (router or path)
+4. Add appropriate permission classes
+
+### Adding a New App
+1. Create app: `python manage.py startapp newapp`
+2. Add to `INSTALLED_APPS` in `settings.py`
+3. Create `urls.py` in new app
+4. Include in `medify_backend/urls.py`: `path('api/newapp/', include('newapp.urls'))`
+5. Consider inter-app dependencies (prefer importing from `core`)
+
+## Active Models & Their Relationships
+
+```
+User (core)
+  ├── business_type: 'hospital' | 'pharmacy'
+  └── OneToOne → WebsiteSetup
+                    ├── Features (hospital): review_system, ai_chatbot, patient_portal, etc.
+                    ├── Features (pharmacy): template_id
+                    ├── Payment: is_paid, total_price
+                    ├── subdomain (unique)
+                    ├── OneToOne → BusinessInfo (branding, contact, hours, location)
+                    ├── ForeignKey ← Department[] (planned - hospitals only)
+                    └── ForeignKey ← Product[] (planned - pharmacies only)
+
+Department (planned)
+  └── ForeignKey ← Doctor[]
+
+Payment (planned)
+  └── Tracks website feature payments
 ```
 
-### Permissions
-- Default: `IsAuthenticated` for most endpoints
-- Use `permissions.AllowAny` for public endpoints (login, signup)
-- Decorator pattern for function-based views:
-```python
-@api_view(['POST'])
-@permission_classes([permissions.AllowAny])
-def signup(request):
-    pass
-```
+## Known Issues & TODOs
+
+### Critical
+- [ ] Fix typo in `BusinessInfoViewSet.get_queryset()` (line 12): `self.requset.user` → `self.request.user`
+- [ ] `WebsiteSetup.subdomain` is required but not set during signup (needs factory or default logic)
+- [ ] Stub models (department, doctor, product, payment) have import errors and are not migrated
+
+### DRF Best Practice Violations
+- [ ] `BusinessInfoViewSet.list()` returns single object instead of list (violates REST semantics)
+- [ ] `get_object()` overrides ignore URL pk parameter (should use `@action(detail=False)` pattern)
+- [ ] Login view uses manual `request.data` parsing instead of serializer validation
+- [ ] Side effects in `create()`/`update()` should use `perform_create()`/`perform_update()` hooks
+
+### Refactoring Opportunities
+- [ ] Remove unused `import factory` from `website_serializers.py`
+- [ ] Deprecate/remove `features.py` model (functionality moved to `WebsiteSetup`)
+- [ ] Implement service layer for signup flow (user + website_setup creation)
+- [ ] Add custom permission classes for ownership checks
+- [ ] Consider `TokenObtainPairView` for login instead of custom function-based view
 
 ### Documentation
 - Include docstrings for all views, serializers, and complex functions

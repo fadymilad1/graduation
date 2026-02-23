@@ -6,7 +6,7 @@ import uuid
 class WebsiteSetup(models.Model):
     """Main website configuration for each user"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='website_setup')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='website_setup')
 
     # Hospital features
     review_system = models.BooleanField(default=False)
@@ -24,6 +24,8 @@ class WebsiteSetup(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    subdomain = models.CharField(max_length=255, unique=True, null=True, blank=False)
 
     def __str__(self):
         return f"Website Setup for {self.user.name}"

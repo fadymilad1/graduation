@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .user_serializers import UserSerializer
 from api.models import WebsiteSetup
+import factory  
 class WebsiteSetupSerializer(serializers.ModelSerializer):
     """Serializer for WebsiteSetup model"""
     user = UserSerializer(read_only=True)
@@ -8,7 +9,7 @@ class WebsiteSetupSerializer(serializers.ModelSerializer):
     class Meta:
         model = WebsiteSetup
         fields = [
-            'id', 'user', 'review_system', 'ai_chatbot', 'ambulance_ordering',
+            'id', 'user', 'subdomain', 'review_system', 'ai_chatbot', 'ambulance_ordering',
             'patient_portal', 'prescription_refill', 'template_id', 'is_paid',
             'total_price', 'created_at', 'updated_at'
         ]

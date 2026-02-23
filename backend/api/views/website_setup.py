@@ -12,5 +12,8 @@ class WebsiteSetupViewSet(viewsets.ModelViewSet):
         return WebsiteSetup.objects.filter(user=self.request.user)
 
     def get_object(self):
-        setup, created = WebsiteSetup.objects.get_or_create(user=self.request.user)
+        setup, created  = WebsiteSetup.objects.get_or_create(user=self.request.user)
         return setup
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

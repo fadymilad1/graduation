@@ -1,5 +1,0 @@
-[phases.build]
-cmds = ["cd backend && python manage.py collectstatic --no-input"]
-
-[start]
-cmd = "cd backend && python manage.py migrate && gunicorn medify_backend.wsgi:application --bind 0.0.0.0:$PORT"

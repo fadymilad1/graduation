@@ -23,3 +23,6 @@ class User(AbstractUser):
 
     def __str__(self):
         return f"{self.name} ({self.email})"
+
+    class Meta:
+        db_table = 'api_user'

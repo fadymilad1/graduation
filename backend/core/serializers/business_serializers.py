@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from api.models import BusinessInfo
+from core.models import BusinessInfo
 
 
 class BusinessInfoSerializer(serializers.ModelSerializer):

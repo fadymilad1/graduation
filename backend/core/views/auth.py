@@ -4,8 +4,8 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 
-from ..models import WebsiteSetup
-from ..serializers import UserSerializer, SignupSerializer
+from core.models import WebsiteSetup
+from core.serializers import UserSerializer, SignupSerializer
 
 
 @api_view(['GET'])
@@ -34,7 +34,7 @@ def signup(request):
     serializer = SignupSerializer(data=request.data)
     if serializer.is_valid():
         user = serializer.save()
-        website_setup = WebsiteSetup.objects.create(user=user)
+        website_setup = WebsiteSetup.objects.create(user=user, subdomain=user.email.split('@')[0])
         refresh = RefreshToken.for_user(user)
         return Response({
             'user': UserSerializer(user, context={'request': request}).data,

@@ -44,7 +44,9 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     # Local apps
-    'api',
+    'core.apps.CoreConfig',
+    'hospitals.apps.HospitalsConfig',
+    'pharmacies.apps.PharmaciesConfig',
 ]
 
 MIDDLEWARE = [
@@ -157,7 +159,7 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Custom User Model
-AUTH_USER_MODEL = 'api.User'
+AUTH_USER_MODEL = 'core.User'
 
 # REST Framework settings
 REST_FRAMEWORK = {

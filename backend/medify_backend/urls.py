@@ -23,7 +23,7 @@ def root_view(request):
 urlpatterns = [
     path('', root_view, name='root'),
     path('admin/', admin.site.urls),
-    path('api/', include('api.urls')),
+    path('api/', include('core.urls')),
 ]
 
 # Serve media files in development

@@ -93,7 +93,7 @@ backend/
 
 ## Build/Lint/Test Commands
 
-### Running the Development Server
+### Running the Development Ser (doctor, department, features, payment, product) if not needed yetver
 ```bash
 python manage.py runserver
 ```

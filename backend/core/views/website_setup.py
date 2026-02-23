@@ -1,7 +1,7 @@
 from rest_framework import viewsets, permissions
 
-from ..models import WebsiteSetup
-from ..serializers import WebsiteSetupSerializer
+from core.models import WebsiteSetup
+from core.serializers import WebsiteSetupSerializer
 
 
 class WebsiteSetupViewSet(viewsets.ModelViewSet):
@@ -12,7 +12,7 @@ class WebsiteSetupViewSet(viewsets.ModelViewSet):
         return WebsiteSetup.objects.filter(user=self.request.user)
 
     def get_object(self):
-        setup, created  = WebsiteSetup.objects.get_or_create(user=self.request.user)
+        setup, created = WebsiteSetup.objects.get_or_create(user=self.request.user)
         return setup
 
     def perform_create(self, serializer):

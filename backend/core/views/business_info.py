@@ -2,15 +2,15 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..models import WebsiteSetup, BusinessInfo
-from ..serializers import BusinessInfoSerializer, BusinessInfoCreateUpdateSerializer
+from core.models import WebsiteSetup, BusinessInfo
+from core.serializers import BusinessInfoSerializer, BusinessInfoCreateUpdateSerializer
 
 
 class BusinessInfoViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return BusinessInfo.objects.select_related('website_setup').filter(website_setup__user=self.requset.user)
+        return BusinessInfo.objects.select_related('website_setup').filter(website_setup__user=self.request.user)
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, WebsiteSetup, BusinessInfo
+from core.models import User, WebsiteSetup, BusinessInfo
 
 
 @admin.register(User)

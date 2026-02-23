@@ -1,3 +1,3 @@
-from django.db import models
+from .models import Department, Doctor
 
-# Create your models here.
+__all__ = ['Department', 'Doctor']

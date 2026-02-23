@@ -1,3 +1,3 @@
-from django.db import models
+from .models import User, WebsiteSetup, BusinessInfo, Payment
 
-# Create your models here.
+__all__ = ['User', 'WebsiteSetup', 'BusinessInfo', 'Payment']

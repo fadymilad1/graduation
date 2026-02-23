@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from .user_serializers import UserSerializer
-from api.models import WebsiteSetup
-import factory  
+from core.models import WebsiteSetup
+
+
 class WebsiteSetupSerializer(serializers.ModelSerializer):
     """Serializer for WebsiteSetup model"""
     user = UserSerializer(read_only=True)

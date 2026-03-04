@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { FiClock, FiMapPin, FiPhoneCall, FiShoppingCart, FiCheckCircle, FiArrowLeft } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
 import { useSearchParams } from 'next/navigation'
+import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, getSiteOwnerId, getPrefixForUserId, getItemForUser, setItemForUser } from '@/lib/storage'
 
 type Product = {
   id: string
@@ -81,7 +82,7 @@ function CheckoutPageContent() {
   const [orderNumber, setOrderNumber] = useState<string>('')
   const [brand, setBrand] = useState<{ name: string; logo: string | null; phone: string; address: string }>({
     name: isDemo ? 'Modern Pharmacy' : '',
-    logo: isDemo ? '/logo.jpg' : null,
+    logo: isDemo ? '/mod logo.png' : null,
     phone: isDemo ? '+1 (555) 123-4567' : '',
     address: isDemo ? '123 Main Street, City' : '',
   })
@@ -123,8 +124,8 @@ function CheckoutPageContent() {
 
   useEffect(() => {
     if (isDemo) return
-    const businessInfo = safeJsonParse<BusinessInfo>(localStorage.getItem('businessInfo'))
-    const setup = safeJsonParse<PharmacySetup>(localStorage.getItem('pharmacySetup'))
+    const businessInfo = safeJsonParse<BusinessInfo>(getSiteItem('businessInfo'))
+    const setup = safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup'))
     setBrand({
       name: businessInfo?.name?.trim() || '',
       logo: businessInfo?.logo || null,
@@ -134,12 +135,11 @@ function CheckoutPageContent() {
   }, [isDemo])
 
   useEffect(() => {
-    // Load cart from localStorage
-    const savedCart = safeJsonParse<CartItem[]>(localStorage.getItem(cartKey))
+    const raw = isDemo ? localStorage.getItem(cartKey) : getSiteItem(cartKey)
+    const savedCart = safeJsonParse<CartItem[]>(raw)
     if (savedCart && savedCart.length > 0) {
       setCart(savedCart)
     } else {
-      // Redirect to medications if cart is empty
       const redirectPath = isDemo ? '/templates/pharmacy/1/medications?demo=1' : '/templates/pharmacy/1/medications'
       router.push(redirectPath)
     }
@@ -171,9 +171,11 @@ function CheckoutPageContent() {
         : prev.map((i) => (i.product.id === productId ? { ...i, quantity: newQuantity } : i))
       
       if (updated.length > 0) {
-        localStorage.setItem(cartKey, JSON.stringify(updated))
+        if (isDemo) localStorage.setItem(cartKey, JSON.stringify(updated))
+        else setSiteItem(cartKey, JSON.stringify(updated))
       } else {
-        localStorage.removeItem(cartKey)
+        if (isDemo) localStorage.removeItem(cartKey)
+        else removeSiteItem(cartKey)
         const redirectPath = isDemo ? '/templates/pharmacy/1/medications?demo=1' : '/templates/pharmacy/1/medications'
         setTimeout(() => router.push(redirectPath), 0)
       }
@@ -185,9 +187,11 @@ function CheckoutPageContent() {
     setCart((prev) => {
       const updated = prev.filter((i) => i.product.id !== productId)
       if (updated.length > 0) {
-        localStorage.setItem(cartKey, JSON.stringify(updated))
+        if (isDemo) localStorage.setItem(cartKey, JSON.stringify(updated))
+        else setSiteItem(cartKey, JSON.stringify(updated))
       } else {
-        localStorage.removeItem(cartKey)
+        if (isDemo) localStorage.removeItem(cartKey)
+        else removeSiteItem(cartKey)
         const redirectPath = isDemo ? '/templates/pharmacy/1/medications?demo=1' : '/templates/pharmacy/1/medications'
         setTimeout(() => router.push(redirectPath), 0)
       }
@@ -239,10 +243,50 @@ function CheckoutPageContent() {
       total,
       placedAt: new Date().toISOString(),
     }
-    localStorage.setItem(`pharmacy_order_${orderNum}`, JSON.stringify(order))
+    const ownerId = !isDemo ? (getStoredUser()?.id ?? getSiteOwnerId()) : null
+    if (ownerId) {
+      const prefix = getPrefixForUserId(ownerId)
+      localStorage.setItem(`${prefix}pharmacy_order_${orderNum}`, JSON.stringify(order))
+      try {
+        const listRaw = getItemForUser(ownerId, 'pharmacyOrders')
+        const list = JSON.parse(listRaw || '[]')
+        list.push({
+          id: orderNum,
+          customerName: formData.fullName?.trim() || 'Customer',
+          customerEmail: formData.email?.trim(),
+          total,
+          status: 'pending',
+          createdAt: order.placedAt,
+          items: cart.map((i) => `${i.product.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`),
+        })
+        setItemForUser(ownerId, 'pharmacyOrders', JSON.stringify(list))
+      } catch {
+        // ignore
+      }
+    } else if (!isDemo) {
+      localStorage.setItem(`pharmacy_order_${orderNum}`, JSON.stringify(order))
+      try {
+        const list = JSON.parse(localStorage.getItem('pharmacyOrders') || '[]')
+        list.push({
+          id: orderNum,
+          customerName: formData.fullName?.trim() || 'Customer',
+          customerEmail: formData.email?.trim(),
+          total,
+          status: 'pending',
+          createdAt: order.placedAt,
+          items: cart.map((i) => `${i.product.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`),
+        })
+        localStorage.setItem('pharmacyOrders', JSON.stringify(list))
+      } catch {
+        // ignore
+      }
+    } else {
+      localStorage.setItem(`pharmacy_order_${orderNum}`, JSON.stringify(order))
+    }
 
     // Clear cart
-    localStorage.removeItem(cartKey)
+    if (isDemo) localStorage.removeItem(cartKey)
+    else removeSiteItem(cartKey)
     setCart([])
 
     setOrderPlaced(true)
@@ -321,7 +365,7 @@ function CheckoutPageContent() {
           <Link href={withDemo("/templates/pharmacy/1")} className="flex items-center gap-3 group">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center overflow-hidden shadow-lg group-hover:scale-105 transition-transform">
               {isDemo ? (
-                <Image src="/logo.jpg" alt="Logo" width={48} height={48} className="object-cover" />
+                <Image src="/mod logo.png" alt="Logo" width={48} height={48} className="object-cover" />
               ) : brand.logo ? (
                 brand.logo.startsWith('data:') ? (
                   <img src={brand.logo} alt={`${brand.name} logo`} className="w-full h-full object-cover" />

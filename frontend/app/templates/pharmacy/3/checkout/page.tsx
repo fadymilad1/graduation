@@ -4,6 +4,7 @@ import Link from 'next/link'
 import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { FiArrowLeft, FiCheckCircle, FiShoppingCart } from 'react-icons/fi'
+import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, getSiteOwnerId, getPrefixForUserId, getItemForUser, setItemForUser } from '@/lib/storage'
 
 type Product = {
   id: string
@@ -100,20 +101,23 @@ function Template3CheckoutContent() {
   const formatCvc = (value: string) => digitsOnly(value).slice(0, 4)
 
   useEffect(() => {
-    const savedCart = safeJsonParse<CartItem[]>(localStorage.getItem(cartKey))
-    if (savedCart && savedCart.length > 0) {
-      setCart(savedCart)
-    } else {
-      setCart([])
-    }
+    const raw = isDemo ? localStorage.getItem(cartKey) : getSiteItem(cartKey)
+    const savedCart = safeJsonParse<CartItem[]>(raw)
+    if (savedCart && savedCart.length > 0) setCart(savedCart)
+    else setCart([])
     setCartLoaded(true)
   }, [router, cartKey, isDemo])
 
   useEffect(() => {
     if (!cartLoaded) return
-    if (cart.length > 0) localStorage.setItem(cartKey, JSON.stringify(cart))
-    else localStorage.removeItem(cartKey)
-  }, [cart, cartKey, cartLoaded])
+    if (cart.length > 0) {
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(cart))
+      else setSiteItem(cartKey, JSON.stringify(cart))
+    } else {
+      if (isDemo) localStorage.removeItem(cartKey)
+      else removeSiteItem(cartKey)
+    }
+  }, [cart, cartKey, cartLoaded, isDemo])
 
   const subtotal = useMemo(() => {
     return cart.reduce((sum, item) => {
@@ -187,9 +191,49 @@ function Template3CheckoutContent() {
       total,
       placedAt: new Date().toISOString(),
     }
-    localStorage.setItem(`pharmacy3_order_${orderNum}`, JSON.stringify(order))
+    const ownerId = !isDemo ? (getStoredUser()?.id ?? getSiteOwnerId()) : null
+    if (ownerId) {
+      const prefix = getPrefixForUserId(ownerId)
+      localStorage.setItem(`${prefix}pharmacy3_order_${orderNum}`, JSON.stringify(order))
+      try {
+        const listRaw = getItemForUser(ownerId, 'pharmacyOrders')
+        const list = JSON.parse(listRaw || '[]')
+        list.push({
+          id: orderNum,
+          customerName: formData.fullName?.trim() || 'Customer',
+          customerEmail: formData.email?.trim(),
+          total,
+          status: 'pending',
+          createdAt: order.placedAt,
+          items: cart.map((i) => `${i.product.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`),
+        })
+        setItemForUser(ownerId, 'pharmacyOrders', JSON.stringify(list))
+      } catch {
+        // ignore
+      }
+    } else if (!isDemo) {
+      localStorage.setItem(`pharmacy3_order_${orderNum}`, JSON.stringify(order))
+      try {
+        const list = JSON.parse(localStorage.getItem('pharmacyOrders') || '[]')
+        list.push({
+          id: orderNum,
+          customerName: formData.fullName?.trim() || 'Customer',
+          customerEmail: formData.email?.trim(),
+          total,
+          status: 'pending',
+          createdAt: order.placedAt,
+          items: cart.map((i) => `${i.product.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`),
+        })
+        localStorage.setItem('pharmacyOrders', JSON.stringify(list))
+      } catch {
+        // ignore
+      }
+    } else {
+      localStorage.setItem(`pharmacy3_order_${orderNum}`, JSON.stringify(order))
+    }
 
-    localStorage.removeItem(cartKey)
+    if (isDemo) localStorage.removeItem(cartKey)
+    else removeSiteItem(cartKey)
     setCart([])
     setOrderPlaced(true)
     setIsSubmitting(false)

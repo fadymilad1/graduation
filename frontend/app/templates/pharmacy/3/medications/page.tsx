@@ -4,6 +4,7 @@ import Link from 'next/link'
 import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { FiMinus, FiPlus, FiShoppingCart } from 'react-icons/fi'
+import { getSiteItem, setSiteItem, removeSiteItem } from '@/lib/storage'
 
 type Product = {
   id: string
@@ -12,12 +13,13 @@ type Product = {
   description?: string
   price: string
   inStock: boolean
+  stock?: number
 }
 
 type CartItem = { product: Product; quantity: number }
 
 type PharmacySetup = {
-  products?: Array<{ name: string; category?: string; description?: string; price?: string; inStock?: boolean }>
+  products?: Array<{ name: string; category?: string; description?: string; price?: string; inStock?: boolean; stock?: number }>
 }
 
 function safeJsonParse<T>(value: string | null): T | null {
@@ -30,11 +32,11 @@ function safeJsonParse<T>(value: string | null): T | null {
 }
 
 const demoProducts: Product[] = [
-  { id: 'd1', name: 'Paracetamol 500mg', category: 'Pain Relief', description: 'Tablets for everyday pain relief.', price: '$4.99', inStock: true },
-  { id: 'd2', name: 'Ibuprofen 200mg', category: 'Pain Relief', description: 'Anti-inflammatory pain reliever.', price: '$6.49', inStock: true },
-  { id: 'd3', name: 'Vitamin C 1000mg', category: 'Vitamins', description: 'Immune system support.', price: '$9.99', inStock: true },
-  { id: 'd4', name: 'Allergy Relief 24h', category: 'Allergy', description: 'Non-drowsy allergy tablets.', price: '$13.99', inStock: true },
-  { id: 'd5', name: 'Saline Nasal Spray', category: 'Cold & Flu', description: 'Gentle nasal spray.', price: '$3.99', inStock: true },
+  { id: 'd1', name: 'Paracetamol 500mg', category: 'Pain Relief', description: 'Tablets for everyday pain relief.', price: '$4.99', inStock: true, stock: 30 },
+  { id: 'd2', name: 'Ibuprofen 200mg', category: 'Pain Relief', description: 'Anti-inflammatory pain reliever.', price: '$6.49', inStock: true, stock: 24 },
+  { id: 'd3', name: 'Vitamin C 1000mg', category: 'Vitamins', description: 'Immune system support.', price: '$9.99', inStock: true, stock: 20 },
+  { id: 'd4', name: 'Allergy Relief 24h', category: 'Allergy', description: 'Non-drowsy allergy tablets.', price: '$13.99', inStock: true, stock: 18 },
+  { id: 'd5', name: 'Saline Nasal Spray', category: 'Cold & Flu', description: 'Gentle nasal spray.', price: '$3.99', inStock: true, stock: 40 },
 ]
 
 function Template3MedicationsContent() {
@@ -54,29 +56,42 @@ function Template3MedicationsContent() {
 
   useEffect(() => {
     if (isDemo) return
-    const setup = safeJsonParse<PharmacySetup>(localStorage.getItem('pharmacySetup'))
+    const setup = safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup'))
     const list = setup?.products?.filter((p) => p.name?.trim()) ?? []
     setPharmacyProducts(
-      list.map((p, idx) => ({
-        id: `user-${idx}`,
-        name: p.name,
-        category: p.category || 'General',
-        description: p.description,
-        price: p.price || '$0.00',
-        inStock: p.inStock !== false,
-      })),
+      list.map((p, idx) => {
+        const stock =
+          typeof (p as any).stock === 'number' && !Number.isNaN((p as any).stock) && (p as any).stock >= 0
+            ? Math.floor((p as any).stock)
+            : undefined
+        return {
+          id: `user-${idx}`,
+          name: p.name,
+          category: p.category || 'General',
+          description: p.description,
+          price: p.price || '$0.00',
+          stock,
+          inStock: stock !== undefined ? stock > 0 : p.inStock !== false,
+        }
+      }),
     )
   }, [isDemo])
 
   useEffect(() => {
-    const saved = safeJsonParse<CartItem[]>(localStorage.getItem(cartKey))
+    const raw = isDemo ? localStorage.getItem(cartKey) : getSiteItem(cartKey)
+    const saved = safeJsonParse<CartItem[]>(raw)
     setCart(saved || [])
-  }, [cartKey])
+  }, [cartKey, isDemo])
 
   useEffect(() => {
-    if (cart.length > 0) localStorage.setItem(cartKey, JSON.stringify(cart))
-    else localStorage.removeItem(cartKey)
-  }, [cart, cartKey])
+    if (cart.length > 0) {
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(cart))
+      else setSiteItem(cartKey, JSON.stringify(cart))
+    } else {
+      if (isDemo) localStorage.removeItem(cartKey)
+      else removeSiteItem(cartKey)
+    }
+  }, [cart, cartKey, isDemo])
 
   const allProducts = useMemo(() => (isDemo ? demoProducts : pharmacyProducts), [isDemo, pharmacyProducts])
 
@@ -89,7 +104,14 @@ function Template3MedicationsContent() {
     setCart((prev) => {
       const item = prev.find((i) => i.product.id === productId)
       if (!item) return prev
-      const newQuantity = item.quantity + delta
+      const maxStock = item.product.stock
+      const proposed = item.quantity + delta
+
+      if (maxStock !== undefined && proposed > maxStock) {
+        return prev
+      }
+
+      const newQuantity = proposed
       const updated =
         newQuantity <= 0
           ? prev.filter((i) => i.product.id !== productId)
@@ -101,9 +123,17 @@ function Template3MedicationsContent() {
   }
 
   const addToCart = (product: Product) => {
-    if (!product.inStock) return
+    const maxStock = product.stock
+    if (maxStock !== undefined && maxStock <= 0) return
+    if (!product.inStock && (maxStock === undefined || maxStock <= 0)) return
     setCart((prev) => {
       const existing = prev.find((i) => i.product.id === product.id)
+      const currentQty = existing?.quantity ?? 0
+
+      if (maxStock !== undefined && currentQty >= maxStock) {
+        return prev
+      }
+
       return existing
         ? prev.map((i) =>
             i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i,
@@ -172,13 +202,17 @@ function Template3MedicationsContent() {
                         <div className="font-semibold text-neutral-dark text-sm">
                           {product.price}
                         </div>
-                        <div
-                          className={`text-xs ${
-                            product.inStock ? 'text-success' : 'text-error'
-                          }`}
-                        >
-                          {product.inStock ? 'In stock' : 'Out of stock'}
-                        </div>
+                      <div
+                        className={`text-xs ${
+                          product.stock === 0 || !product.inStock ? 'text-error' : 'text-success'
+                        }`}
+                      >
+                        {product.stock !== undefined
+                          ? `${product.stock} in stock`
+                          : product.inStock
+                            ? 'Available'
+                            : '0 in stock'}
+                      </div>
                       </div>
                       {quantity > 0 ? (
                         <div className="flex items-center gap-2">
@@ -196,7 +230,10 @@ function Template3MedicationsContent() {
                           <button
                             type="button"
                             onClick={() => updateQuantity(product.id, 1)}
-                            disabled={!product.inStock}
+                            disabled={
+                              !product.inStock ||
+                              (product.stock !== undefined && quantity >= product.stock)
+                            }
                             aria-label="Increase quantity"
                             className="w-7 h-7 rounded-full border border-neutral-border flex items-center justify-center text-xs hover:bg-neutral-light disabled:opacity-50 disabled:cursor-not-allowed"
                           >
@@ -207,7 +244,7 @@ function Template3MedicationsContent() {
                         <button
                           type="button"
                           onClick={() => addToCart(product)}
-                          disabled={!product.inStock}
+                          disabled={!product.inStock || product.stock === 0}
                           className="px-3 py-2 rounded-full border border-neutral-border text-xs sm:text-sm hover:bg-neutral-light disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {product.inStock ? 'Add to cart' : 'Out of stock'}

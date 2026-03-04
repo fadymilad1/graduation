@@ -20,7 +20,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
                   step.completed
-                    ? 'bg-success text-white'
+                    ? 'bg-primary text-white'
                     : index === currentStep
                     ? 'bg-primary text-white'
                     : 'bg-neutral-border text-neutral-gray'
@@ -30,10 +30,8 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
               </div>
               <p
                 className={`mt-2 text-sm text-center ${
-                  index === currentStep
+                  index === currentStep || step.completed
                     ? 'text-primary font-medium'
-                    : step.completed
-                    ? 'text-success'
                     : 'text-neutral-gray'
                 }`}
               >
@@ -43,7 +41,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
             {index < steps.length - 1 && (
               <div
                 className={`h-1 flex-1 mx-2 ${
-                  step.completed ? 'bg-success' : 'bg-neutral-border'
+                  step.completed ? 'bg-primary' : 'bg-neutral-border'
                 }`}
               />
             )}

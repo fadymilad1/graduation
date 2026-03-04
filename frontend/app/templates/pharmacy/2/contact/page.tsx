@@ -6,6 +6,7 @@ import React, { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { FiArrowLeft, FiClock, FiMapPin, FiPhoneCall, FiSend } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
+import { getSiteItem } from '@/lib/storage'
 
 type PharmacySetup = { phone?: string; address?: string }
 type BusinessInfo = { name?: string; logo?: string; contactPhone?: string; address?: string; workingHours?: Record<string, { open?: string; close?: string; closed?: boolean }> }
@@ -32,7 +33,7 @@ function ContactContent() {
 
   const [brand, setBrand] = useState<{ name: string; logo: string | null; phone: string; address: string; openHours: string }>({
     name: isDemo ? 'Classic Pharmacy' : '',
-    logo: isDemo ? '/logo.jpg' : null,
+    logo: isDemo ? '/mod logo.png' : null,
     phone: isDemo ? '+1 (555) 234-5678' : '',
     address: isDemo ? '45 Health Avenue, City' : '',
     openHours: isDemo ? 'Mon–Sat 09:00–19:00' : '',
@@ -40,8 +41,8 @@ function ContactContent() {
 
   useEffect(() => {
     if (isDemo) return
-    const businessInfo = safeJsonParse<BusinessInfo>(localStorage.getItem('businessInfo'))
-    const setup = safeJsonParse<PharmacySetup>(localStorage.getItem('pharmacySetup'))
+    const businessInfo = safeJsonParse<BusinessInfo>(getSiteItem('businessInfo'))
+    const setup = safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup'))
     const hours = businessInfo?.workingHours
     let openHours = ''
     if (hours?.monday?.closed) openHours = 'Hours vary'
@@ -88,7 +89,7 @@ function ContactContent() {
           <Link href={withDemo('/templates/pharmacy/2')} className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center overflow-hidden border border-amber-300 shadow-sm">
               {isDemo ? (
-                <Image src="/logo.jpg" alt="Logo" width={44} height={44} className="object-cover" />
+                <Image src="/mod logo.png" alt="Logo" width={44} height={44} className="object-cover" />
               ) : brand.logo ? (
                 brand.logo.startsWith('data:') ? (
                   <img src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} className="w-full h-full object-cover" />

@@ -13,6 +13,7 @@ import {
   FiSettings,
   FiLogOut,
   FiX,
+  FiShoppingCart,
 } from 'react-icons/fi'
 
 interface SidebarItem {
@@ -52,6 +53,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ userType, isOpen = true, onClo
   const handleLogout = () => {
     localStorage.removeItem('isLoggedIn')
     localStorage.removeItem('user')
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    localStorage.removeItem('website_setup_id')
     router.push('/login')
   }
 
@@ -66,6 +70,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ userType, isOpen = true, onClo
       ? [{ label: 'Templates', icon: <FiLayout />, href: '/dashboard/pharmacy/templates' }]
       : []),
     { label: 'Business Info', icon: <FiInfo />, href: '/dashboard/business-info' },
+    {
+      label: currentUserType === 'pharmacy' ? 'Orders' : 'Appointments',
+      icon: <FiShoppingCart />,
+      href: '/dashboard/orders',
+    },
     { label: 'AI Assistant', icon: <FiMessageSquare />, href: '/dashboard/ai-assistant' },
     { label: 'Settings', icon: <FiSettings />, href: '/dashboard/settings' },
   ]
@@ -88,7 +97,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ userType, isOpen = true, onClo
           <Link href="/" className="flex items-center gap-2 sm:gap-3" onClick={onClose}>
             <div className="relative h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0">
               <Image
-                src="/Gemini_Generated_logo.png"
+                src="/mod logo.png"
                 alt="Medify logo"
                 fill
                 className="object-contain"

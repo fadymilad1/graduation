@@ -5,6 +5,7 @@ import Link from 'next/link'
 import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { FiShoppingCart, FiPlus, FiMinus } from 'react-icons/fi'
+import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, setSiteOwnerId } from '@/lib/storage'
 
 type PharmacySetup = {
   phone?: string
@@ -65,25 +66,33 @@ function Template3HomeContent() {
 
   useEffect(() => {
     if (isDemo) return
-    setPharmacySetup(safeJsonParse<PharmacySetup>(localStorage.getItem('pharmacySetup')))
-    setBusinessInfo(safeJsonParse<BusinessInfo>(localStorage.getItem('businessInfo')))
+    const user = getStoredUser()
+    if (user?.id) setSiteOwnerId(user.id)
+    setPharmacySetup(safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup')))
+    setBusinessInfo(safeJsonParse<BusinessInfo>(getSiteItem('businessInfo')))
   }, [isDemo])
 
   useEffect(() => {
-    const saved = safeJsonParse<CartItem[]>(localStorage.getItem(cartKey))
+    const raw = isDemo ? localStorage.getItem(cartKey) : getSiteItem(cartKey)
+    const saved = safeJsonParse<CartItem[]>(raw)
     setCart(saved || [])
-  }, [cartKey])
+  }, [cartKey, isDemo])
 
   useEffect(() => {
-    if (cart.length > 0) localStorage.setItem(cartKey, JSON.stringify(cart))
-    else localStorage.removeItem(cartKey)
-  }, [cart, cartKey])
+    if (cart.length > 0) {
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(cart))
+      else setSiteItem(cartKey, JSON.stringify(cart))
+    } else {
+      if (isDemo) localStorage.removeItem(cartKey)
+      else removeSiteItem(cartKey)
+    }
+  }, [cart, cartKey, isDemo])
 
   const brand = useMemo(() => {
     if (isDemo) {
       return {
         name: 'Minimal Pharmacy',
-        logo: '/logo.jpg',
+        logo: '/mod logo.png',
         about: 'Simple, fast, and focused on the products your patients need every day.',
         phone: '+1 (555) 345-6789',
         address: '12 Simple Street, City',
@@ -176,7 +185,8 @@ function Template3HomeContent() {
           )
         : [...prev, { product, quantity: 1 }]
 
-      localStorage.setItem(cartKey, JSON.stringify(updated))
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(updated))
+      else setSiteItem(cartKey, JSON.stringify(updated))
       return updated
     })
   }
@@ -192,7 +202,8 @@ function Template3HomeContent() {
           : prev.map((i) =>
               i.product.id === productId ? { ...i, quantity: newQuantity } : i,
             )
-      localStorage.setItem(cartKey, JSON.stringify(updated))
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(updated))
+      else setSiteItem(cartKey, JSON.stringify(updated))
       return updated
     })
   }
@@ -205,7 +216,7 @@ function Template3HomeContent() {
           <Link href={withDemo('/templates/pharmacy/3')} className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-neutral-light flex items-center justify-center overflow-hidden border border-neutral-border">
               {isDemo ? (
-                <Image src="/logo.jpg" alt="Logo" width={40} height={40} className="object-cover" />
+                <Image src="/mod logo.png" alt="Logo" width={40} height={40} className="object-cover" />
               ) : brand.logo ? (
                 brand.logo.startsWith('data:') ? (
                   // eslint-disable-next-line @next/next/no-img-element

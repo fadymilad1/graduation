@@ -16,6 +16,7 @@ import {
   FiPlus,
 } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
+import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, setSiteOwnerId } from '@/lib/storage'
 
 type PharmacySetup = {
   phone?: string
@@ -78,25 +79,33 @@ function Template2HomeContent() {
 
   useEffect(() => {
     if (isDemo) return
-    setPharmacySetup(safeJsonParse<PharmacySetup>(localStorage.getItem('pharmacySetup')))
-    setBusinessInfo(safeJsonParse<BusinessInfo>(localStorage.getItem('businessInfo')))
+    const user = getStoredUser()
+    if (user?.id) setSiteOwnerId(user.id)
+    setPharmacySetup(safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup')))
+    setBusinessInfo(safeJsonParse<BusinessInfo>(getSiteItem('businessInfo')))
   }, [isDemo])
 
   useEffect(() => {
-    const saved = safeJsonParse<CartItem[]>(localStorage.getItem(cartKey))
+    const raw = isDemo ? localStorage.getItem(cartKey) : getSiteItem(cartKey)
+    const saved = safeJsonParse<CartItem[]>(raw)
     setCart(saved || [])
-  }, [cartKey])
+  }, [cartKey, isDemo])
 
   useEffect(() => {
-    if (cart.length > 0) localStorage.setItem(cartKey, JSON.stringify(cart))
-    else localStorage.removeItem(cartKey)
-  }, [cart, cartKey])
+    if (cart.length > 0) {
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(cart))
+      else setSiteItem(cartKey, JSON.stringify(cart))
+    } else {
+      if (isDemo) localStorage.removeItem(cartKey)
+      else removeSiteItem(cartKey)
+    }
+  }, [cart, cartKey, isDemo])
 
   const brand = useMemo(() => {
     if (isDemo) {
       return {
         name: 'Classic Pharmacy',
-        logo: '/logo.jpg',
+        logo: '/mod logo.png',
         about:
           'Traditional care with a professional touch. Quality medicines, trusted advice, and reliable service.',
         phone: '+1 (555) 234-5678',
@@ -173,7 +182,8 @@ function Template2HomeContent() {
         newQuantity <= 0
           ? prev.filter((i) => i.product.id !== productId)
           : prev.map((i) => (i.product.id === productId ? { ...i, quantity: newQuantity } : i))
-      localStorage.setItem(cartKey, JSON.stringify(updated))
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(updated))
+      else setSiteItem(cartKey, JSON.stringify(updated))
       return updated
     })
   }
@@ -186,8 +196,8 @@ function Template2HomeContent() {
         ? prev.map((i) => (i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i))
         : [...prev, { product, quantity: 1 }]
 
-      // Persist immediately so checkout sees it even if user navigates fast
-      localStorage.setItem(cartKey, JSON.stringify(updated))
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(updated))
+      else setSiteItem(cartKey, JSON.stringify(updated))
       return updated
     })
   }
@@ -227,7 +237,7 @@ function Template2HomeContent() {
           <Link href={withDemo('/templates/pharmacy/2')} className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center overflow-hidden border border-amber-300 shadow-sm">
               {isDemo ? (
-                <Image src="/logo.jpg" alt="Logo" width={44} height={44} className="object-cover" />
+                <Image src="/mod logo.png" alt="Logo" width={44} height={44} className="object-cover" />
               ) : brand.logo ? (
                 brand.logo.startsWith('data:') ? (
                   <img src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} className="w-full h-full object-cover" />

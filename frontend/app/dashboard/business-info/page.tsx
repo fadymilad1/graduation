@@ -1,15 +1,16 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
-import Script from 'next/script'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { FileUpload } from '@/components/ui/FileUpload'
-import { Select } from '@/components/ui/Select'
-import { FiMapPin, FiClock, FiPlus, FiX, FiCheckCircle, FiGlobe } from 'react-icons/fi'
+import { FiMapPin, FiCheckCircle, FiGlobe } from 'react-icons/fi'
+import { getScopedItem, setScopedItem } from '@/lib/storage'
+import type L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 
 export default function BusinessInfoPage() {
   const router = useRouter()
@@ -49,10 +50,10 @@ export default function BusinessInfoPage() {
     }
   }, [])
 
-  // Load saved business info when page mounts so data persists on refresh
+  // Load saved business info when page mounts so data persists on refresh (user-scoped)
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('businessInfo')
+      const saved = getScopedItem('businessInfo')
       if (saved) {
         const parsed = JSON.parse(saved)
         setFormData((prev) => ({
@@ -65,17 +66,20 @@ export default function BusinessInfoPage() {
             ...(parsed.workingHours || {}),
           },
         }))
+        if (parsed.logo) {
+          setLogoPreview(parsed.logo)
+        }
       }
     } catch {
       // Ignore parse errors and keep defaults
     }
   }, [])
 
-  // Auto-save business info draft whenever the user types
+  // Auto-save business info draft whenever the user types (user-scoped)
   useEffect(() => {
     try {
       const { logo, ...rest } = formData
-      localStorage.setItem('businessInfo', JSON.stringify(rest))
+      setScopedItem('businessInfo', JSON.stringify(rest))
     } catch {
       // Ignore storage write errors
     }
@@ -95,13 +99,13 @@ export default function BusinessInfoPage() {
       })
     }
     
-    // Store business info locally for the template to read
+    // Store business info locally for the template to read (user-scoped)
     const businessInfoToSave = {
       ...formData,
       logo: logoDataUrl, // Store as data URL instead of File object
     }
-    localStorage.setItem('businessInfo', JSON.stringify(businessInfoToSave))
-    localStorage.setItem('isPublished', 'true')
+    setScopedItem('businessInfo', JSON.stringify(businessInfoToSave))
+    setScopedItem('isPublished', 'true')
     
     setIsPublishing(false)
     setIsPublished(true)
@@ -109,7 +113,7 @@ export default function BusinessInfoPage() {
     // After publishing, send user to their live website (pharmacy) or dashboard (hospital)
     setTimeout(() => {
       if (userType === 'pharmacy') {
-        const selectedTemplate = localStorage.getItem('selectedTemplate')
+        const selectedTemplate = getScopedItem('selectedTemplate')
         const templateId = selectedTemplate ? parseInt(selectedTemplate) : 1
         router.push(`/templates/pharmacy/${templateId}`)
       } else {
@@ -130,12 +134,6 @@ export default function BusinessInfoPage() {
 
   return (
     <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden">
-      {/* Google Maps script with Places library (requires NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) */}
-      <Script
-        src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''}&libraries=places`}
-        strategy="lazyOnload"
-      />
-
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold text-neutral-dark mb-2">Business Information</h1>
         <p className="text-sm sm:text-base text-neutral-gray">Add your business details to complete your website</p>
@@ -162,11 +160,31 @@ export default function BusinessInfoPage() {
                   if (file) {
                     const reader = new FileReader()
                     reader.onloadend = () => {
-                      setLogoPreview(reader.result as string)
+                      const dataUrl = reader.result as string
+                      setLogoPreview(dataUrl)
+                      // Save logo to localStorage so dashboard progress shows "Upload Logo" as complete
+                      try {
+                        const saved = getScopedItem('businessInfo')
+                        const parsed = saved ? JSON.parse(saved) : {}
+                        parsed.logo = dataUrl
+                        setScopedItem('businessInfo', JSON.stringify(parsed))
+                      } catch {
+                        // Ignore
+                      }
                     }
                     reader.readAsDataURL(file)
                   } else {
                     setLogoPreview(null)
+                    try {
+                      const saved = getScopedItem('businessInfo')
+                      if (saved) {
+                        const parsed = JSON.parse(saved)
+                        delete parsed.logo
+                        setScopedItem('businessInfo', JSON.stringify(parsed))
+                      }
+                    } catch {
+                      // Ignore
+                    }
                   }
                 }}
               />
@@ -349,174 +367,153 @@ interface LocationMapPickerProps {
   setFormData: React.Dispatch<React.SetStateAction<any>>
 }
 
-// Google Maps type declarations
-declare global {
-  interface Window {
-    google: {
-      maps: {
-        Map: new (element: HTMLElement, options?: any) => any
-        Marker: new (options?: any) => any
-        LatLng: new (lat: number, lng: number) => any
-        event: {
-          addListener: (instance: any, event: string, handler: (e: any) => void) => void
-        }
-        places: {
-          Autocomplete: new (input: HTMLInputElement, options?: any) => {
-            getPlace: () => any
-            addListener: (event: string, handler: () => void) => void
-          }
-        }
-        Geocoder: new () => {
-          geocode: (request: any, callback: (results: any[], status: string) => void) => void
-        }
-        MapMouseEvent: {
-          latLng: {
-            lat: () => number
-            lng: () => number
-          } | null
-        }
-      }
-    }
-  }
+const NOMINATIM_UA = 'MedifyApp/1.0 (Business Info Location Picker)'
+
+async function nominatimSearch(query: string): Promise<{ lat: string; lon: string; display_name: string } | null> {
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
+    { headers: { 'User-Agent': NOMINATIM_UA } }
+  )
+  const data = await res.json()
+  return Array.isArray(data) && data[0] ? data[0] : null
+}
+
+async function nominatimReverse(lat: number, lon: number): Promise<string | null> {
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+    { headers: { 'User-Agent': NOMINATIM_UA } }
+  )
+  const data = await res.json()
+  return data?.display_name ?? null
 }
 
 const LocationMapPicker: React.FC<LocationMapPickerProps> = ({ formData, setFormData }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
-  const mapRef = useRef<any>(null)
-  const markerRef = useRef<any>(null)
-  const autocompleteRef = useRef<any>(null)
-  const geocoderRef = useRef<any>(null)
+  const mapRef = useRef<{ map: L.Map; marker: L.Marker } | null>(null)
+  type LeafletMouseEvent = { latlng: { lat: number; lng: number } }
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searching, setSearching] = useState(false)
+  const [mapError, setMapError] = useState<string | null>(null)
 
-  // Function to update address from coordinates (reverse geocoding)
+  const defaultCenter: [number, number] = [30.0444, 31.2357]
+
   const updateAddressFromCoordinates = (lat: number, lng: number) => {
-    if (!geocoderRef.current) return
-    
-    geocoderRef.current.geocode(
-      { location: { lat, lng } },
-      (results: any[], status: string) => {
-        if (status === 'OK' && results && results[0]) {
-          setFormData((prev: any) => ({
-            ...prev,
-            address: results[0].formatted_address,
-          }))
-        }
+    nominatimReverse(lat, lng).then((addr) => {
+      if (addr) {
+        setFormData((prev: any) => ({ ...prev, address: addr }))
       }
-    )
+    })
+  }
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const q = (searchInputRef.current?.value ?? searchQuery).trim()
+    if (!q) return
+    setSearching(true)
+    setMapError(null)
+    try {
+      const result = await nominatimSearch(q)
+      if (!result || !mapRef.current) {
+        setMapError('Location not found. Try a different address.')
+        setSearching(false)
+        return
+      }
+      const lat = parseFloat(result.lat)
+      const lng = parseFloat(result.lon)
+      mapRef.current.map.setView([lat, lng], 15)
+      mapRef.current.marker.setLatLng([lat, lng])
+      setFormData((prev: any) => ({
+        ...prev,
+        location: { lat, lng },
+        address: result.display_name,
+      }))
+      setSearchQuery('')
+      if (searchInputRef.current) searchInputRef.current.value = ''
+    } catch {
+      setMapError('Search failed. Please try again.')
+    }
+    setSearching(false)
   }
 
   useEffect(() => {
-    if (!mapContainerRef.current || !searchInputRef.current) return
-    if (!window.google) return
-    const google = window.google
+    if (!mapContainerRef.current || typeof window === 'undefined') return
+    const L = require('leaflet')
+    if (!L) return
 
-    if (!mapRef.current) {
-      const center = new google.maps.LatLng(30.0444, 31.2357) // Default Cairo center
-      mapRef.current = new google.maps.Map(mapContainerRef.current, {
-        center,
-        zoom: 13,
-      })
+    // Fix default marker icon in Next.js (broken paths)
+    delete (L.Icon.Default.prototype as any)._getIconUrl
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+      iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+    })
 
-      markerRef.current = new google.maps.Marker({
-        position: center,
-        map: mapRef.current,
-        draggable: true,
-      })
+    const map = L.map(mapContainerRef.current).setView(defaultCenter, 13)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(map)
 
-      geocoderRef.current = new google.maps.Geocoder()
+    const marker = L.marker(defaultCenter, { draggable: true }).addTo(map)
 
-      // Initialize Places Autocomplete
-      autocompleteRef.current = new google.maps.places.Autocomplete(searchInputRef.current, {
-        types: ['address'],
-        fields: ['geometry', 'formatted_address'],
-      })
+    map.on('click', (e: LeafletMouseEvent) => {
+      const { lat, lng } = e.latlng
+      marker.setLatLng([lat, lng])
+      setFormData((prev: any) => ({ ...prev, location: { lat, lng } }))
+      updateAddressFromCoordinates(lat, lng)
+    })
 
-      // When a place is selected from autocomplete
-      autocompleteRef.current.addListener('place_changed', () => {
-        const place = autocompleteRef.current?.getPlace()
-        if (!place?.geometry?.location) return
+    marker.on('dragend', () => {
+      const pos = marker.getLatLng()
+      const lat = pos.lat
+      const lng = pos.lng
+      setFormData((prev: any) => ({ ...prev, location: { lat, lng } }))
+      updateAddressFromCoordinates(lat, lng)
+    })
 
-        const location = place.geometry.location
-        const lat = location.lat()
-        const lng = location.lng()
+    mapRef.current = { map, marker }
 
-        // Update map center and marker
-        mapRef.current?.setCenter(location)
-        mapRef.current?.setZoom(15)
-        if (markerRef.current) {
-          markerRef.current.setPosition(location)
-        }
-
-        // Update form data
-        setFormData((prev: any) => ({
-          ...prev,
-          location: { lat, lng },
-          address: place.formatted_address || prev.address,
-        }))
-      })
-
-      // When map is clicked
-      google.maps.event.addListener(mapRef.current, 'click', (e: any) => {
-        if (!e.latLng) return
-        const position = e.latLng
-        const lat = position.lat()
-        const lng = position.lng()
-
-        if (markerRef.current) {
-          markerRef.current.setPosition(position)
-        }
-        
-        setFormData((prev: any) => ({
-          ...prev,
-          location: { lat, lng },
-        }))
-
-        // Update address from coordinates
-        updateAddressFromCoordinates(lat, lng)
-      })
-
-      // When marker is dragged
-      google.maps.event.addListener(markerRef.current, 'dragend', (e: any) => {
-        if (!e.latLng) return
-        const position = e.latLng
-        const lat = position.lat()
-        const lng = position.lng()
-
-        setFormData((prev: any) => ({
-          ...prev,
-          location: { lat, lng },
-        }))
-
-        // Update address from coordinates
-        updateAddressFromCoordinates(lat, lng)
-      })
+    return () => {
+      map.remove()
+      mapRef.current = null
     }
   }, [setFormData])
 
   return (
     <div className="space-y-2">
-      <div className="relative">
-        <Input
+      <div className="flex gap-2">
+        <input
           ref={searchInputRef}
-          placeholder="Search for a location..."
-          className="w-full"
+          type="text"
+          placeholder="Search for a location (e.g. city or full address)"
+          className="flex-1 min-w-0 px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              handleSearch(e as unknown as React.FormEvent)
+            }
+          }}
         />
+        <Button type="button" variant="secondary" disabled={searching} onClick={handleSearch}>
+          {searching ? 'Searching...' : 'Search'}
+        </Button>
       </div>
       <div
         ref={mapContainerRef}
-        className="h-64 bg-neutral-light rounded-lg"
+        className="h-64 bg-neutral-light rounded-lg z-0"
       />
+      {mapError && (
+        <p className="text-xs text-error">{mapError}</p>
+      )}
       {formData.location && (
         <p className="text-xs text-neutral-gray">
-          Selected coordinates: {formData.location.lat?.toFixed(5)}, {formData.location.lng?.toFixed(5)}
+          Selected: {formData.location.lat?.toFixed(5)}, {formData.location.lng?.toFixed(5)}
         </p>
       )}
-      {!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && (
-        <div className="bg-warning/10 border border-warning rounded-lg p-3 text-xs text-warning">
-          <p className="font-semibold mb-1">API Key Missing</p>
-          <p>Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in your .env.local file and restart the dev server.</p>
-        </div>
-      )}
+      <p className="text-xs text-neutral-gray">
+        Click the map or drag the marker to set your location. Uses OpenStreetMap (no API key required).
+      </p>
     </div>
   )
 }

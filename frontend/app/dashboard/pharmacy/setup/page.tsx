@@ -4,10 +4,9 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Textarea } from '@/components/ui/Textarea'
 import { FileUpload } from '@/components/ui/FileUpload'
 import { FiPackage, FiPlus, FiTrash2 } from 'react-icons/fi'
+import { getScopedItem, setScopedItem } from '@/lib/storage'
 
 interface Product {
   name: string
@@ -15,6 +14,7 @@ interface Product {
   description: string
   price: string
   inStock: boolean
+  stock?: number
 }
 
 export default function PharmacySetupPage() {
@@ -23,12 +23,6 @@ export default function PharmacySetupPage() {
   const [isImporting, setIsImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [formData, setFormData] = useState({
-    // Contact Information
-    phone: '',
-    email: '',
-    address: '',
-    
-    // Products
     products: [
       {
         name: '',
@@ -36,14 +30,15 @@ export default function PharmacySetupPage() {
         description: '',
         price: '',
         inStock: true,
+        stock: 0,
       } as Product,
     ],
   })
 
-  // Automatically save draft whenever form data changes so refresh doesn't lose data
+  // Automatically save draft whenever form data changes (user-scoped)
   useEffect(() => {
     try {
-      localStorage.setItem('pharmacySetup', JSON.stringify(formData))
+      setScopedItem('pharmacySetup', JSON.stringify(formData))
     } catch {
       // Ignore write errors (e.g. storage disabled)
     }
@@ -65,16 +60,15 @@ export default function PharmacySetupPage() {
     }
   }, [router])
 
-  // Load saved pharmacy setup when page mounts so data persists on refresh
+  // Load saved pharmacy setup when page mounts (user-scoped)
   useEffect(() => {
     try {
-      const savedDraft = localStorage.getItem('pharmacySetup')
+      const savedDraft = getScopedItem('pharmacySetup')
       if (savedDraft) {
         const parsed = JSON.parse(savedDraft)
         // Merge with defaults to avoid missing fields
         setFormData((prev) => ({
           ...prev,
-          ...parsed,
           products: Array.isArray(parsed.products) && parsed.products.length > 0 ? parsed.products : prev.products,
         }))
       }
@@ -99,26 +93,44 @@ export default function PharmacySetupPage() {
           throw new Error('File appears to be empty.')
         }
 
-        // Expect header: name,category,description,price,inStock
+        // Expect header: name,category,description,price,stock (or legacy inStock)
         const [, ...rows] = lines
         const importedProducts: Product[] = rows
           .map((line) => line.split(','))
-          .filter((cols) => cols.length >= 4) // name, category, description, price (inStock optional)
+          .filter((cols) => cols.length >= 4) // name, category, description, price, (stock/inStock optional)
           .map((cols) => {
-            const [name, category, description, price, inStockRaw] = cols.map((c) => c.trim())
-            const inStockValue = (inStockRaw || 'true').toLowerCase()
-            const inStock =
-              inStockValue === 'true' ||
-              inStockValue === '1' ||
-              inStockValue === 'yes' ||
-              inStockValue === 'y' ||
-              inStockValue === 'in stock'
+            const [name, category, description, priceRaw, stockOrInStockRaw] = cols.map((c) => c.trim())
+            const price = priceRaw.replace(/[^0-9.]/g, '').split('.')
+              .filter((_, i) => i < 2)
+              .join('.') || ''
+
+            let stock: number | undefined
+            let inStock = true
+
+            if (stockOrInStockRaw) {
+              const numeric = Number(stockOrInStockRaw)
+              if (!Number.isNaN(numeric) && numeric >= 0) {
+                stock = Math.floor(numeric)
+                inStock = stock > 0
+              } else {
+                const inStockValue = stockOrInStockRaw.toLowerCase()
+                inStock =
+                  inStockValue === 'true' ||
+                  inStockValue === '1' ||
+                  inStockValue === 'yes' ||
+                  inStockValue === 'y' ||
+                  inStockValue === 'in stock'
+                stock = inStock ? undefined : 0
+              }
+            }
+
             return {
               name,
               category,
               description,
               price,
               inStock,
+              stock,
             } as Product
           })
           .filter((p) => p.name && p.category && p.price)
@@ -149,10 +161,29 @@ export default function PharmacySetupPage() {
   const handleProductChange = (
     index: number,
     field: keyof Product,
-    value: string | boolean
+    value: string | boolean | number
   ) => {
     const newProducts = [...formData.products]
-    newProducts[index] = { ...newProducts[index], [field]: value }
+    let updatedProduct = { ...newProducts[index], [field]: value }
+
+    if (field === 'stock') {
+      const numeric = typeof value === 'number' ? value : parseInt(String(value), 10)
+      const safeStock = Number.isNaN(numeric) || numeric < 0 ? 0 : numeric
+      updatedProduct.stock = safeStock
+      updatedProduct.inStock = safeStock > 0
+    }
+
+    if (field === 'price') {
+      // Store only digits and one decimal point; strip currency symbols
+      const raw = String(value).replace(/[^0-9.]/g, '')
+      const parts = raw.split('.')
+      const normalized = parts.length > 1
+        ? `${parts[0] || '0'}.${parts.slice(1).join('')}`
+        : raw
+      updatedProduct.price = normalized
+    }
+
+    newProducts[index] = updatedProduct
     setFormData({ ...formData, products: newProducts })
   }
 
@@ -163,6 +194,7 @@ export default function PharmacySetupPage() {
       description: '',
       price: '',
       inStock: true,
+      stock: 0,
     }]
     setFormData({ ...formData, products: newProducts })
   }
@@ -174,8 +206,8 @@ export default function PharmacySetupPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    // Store pharmacy setup data
-    localStorage.setItem('pharmacySetup', JSON.stringify(formData))
+    // Store pharmacy setup data (user-scoped)
+    setScopedItem('pharmacySetup', JSON.stringify(formData))
     // Redirect to business info
     router.push('/dashboard/business-info?type=pharmacy')
   }
@@ -198,35 +230,6 @@ export default function PharmacySetupPage() {
 
       <form onSubmit={handleSubmit}>
         <div className="space-y-6">
-          {/* Contact Information */}
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold text-neutral-dark mb-6">Contact Information</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Phone"
-                placeholder="+1 (555) 123-4567"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
-              <Input
-                label="Email"
-                type="email"
-                placeholder="contact@pharmacy.com"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-              <div className="col-span-2">
-                <Textarea
-                  label="Address"
-                  placeholder="123 Main Street, City, State, ZIP"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  rows={3}
-                />
-              </div>
-            </div>
-          </Card>
-
           {/* Products & Information */}
           <Card className="p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
@@ -238,9 +241,10 @@ export default function PharmacySetupPage() {
                 <p className="text-xs text-neutral-gray mt-2">
                   CSV format:&nbsp;
                   <span className="font-mono">
-                    name, category, description, price, inStock
+                    name, category, description, price, stock
                   </span>
-                  . You can download a sample file from{' '}
+                  &nbsp;(you can also use legacy <span className="font-mono">inStock</span> values like
+                  &nbsp;true/false). You can download a sample file from{' '}
                   <a
                     href="/sample-pharmacy-products.csv"
                     className="text-primary underline"
@@ -322,29 +326,41 @@ export default function PharmacySetupPage() {
                       <label className="block text-sm font-medium text-neutral-dark mb-2">
                         Price {!product.price && <span className="text-error text-xs">*</span>}
                       </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. $9.99"
-                        value={product.price}
-                        onChange={(e) => handleProductChange(index, 'price', e.target.value)}
-                        required
-                        className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                      />
+                      <div className="flex items-center border border-neutral-border rounded-lg focus-within:ring-2 focus-within:ring-primary focus-within:border-transparent">
+                        <span className="pl-4 py-2 text-neutral-gray font-medium" aria-hidden="true">$</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="9.99"
+                          value={product.price}
+                          onChange={(e) => handleProductChange(index, 'price', e.target.value)}
+                          required
+                          className="flex-1 min-w-0 py-2 pr-4 border-0 rounded-r-lg focus:ring-0 focus:outline-none"
+                        />
+                      </div>
                     </div>
                     <div>
-                      <label htmlFor={`product-availability-${index}`} className="block text-sm font-medium text-neutral-dark mb-2">
-                        Availability
+                      <label htmlFor={`product-stock-${index}`} className="block text-sm font-medium text-neutral-dark mb-2">
+                        Stock quantity
                       </label>
-                      <select
-                        id={`product-availability-${index}`}
-                        value={product.inStock ? 'in-stock' : 'out-of-stock'}
-                        onChange={(e) => handleProductChange(index, 'inStock', e.target.value === 'in-stock')}
+                      <input
+                        id={`product-stock-${index}`}
+                        type="number"
+                        min={0}
+                        placeholder="e.g. 25"
+                        value={product.stock ?? ''}
+                        onChange={(e) =>
+                          handleProductChange(
+                            index,
+                            'stock',
+                            e.target.value === '' ? 0 : Number(e.target.value),
+                          )
+                        }
                         className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                        aria-label="Product availability status"
-                      >
-                        <option value="in-stock">In Stock</option>
-                        <option value="out-of-stock">Out of Stock</option>
-                      </select>
+                      />
+                      <p className="text-xs text-neutral-gray mt-1">
+                        Enter how many units of this product are available in stock.
+                      </p>
                     </div>
                   </div>
 

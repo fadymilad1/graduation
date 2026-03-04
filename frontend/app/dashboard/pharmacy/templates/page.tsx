@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/Modal'
 import { PaymentModal } from '@/components/payment/PaymentModal'
 import { FiEye, FiCheck, FiMessageSquare } from 'react-icons/fi'
 import { websiteSetupApiV2 } from '@/lib/api'
+import { setScopedItem } from '@/lib/storage'
 
 export default function PharmacyTemplatesPage() {
   const router = useRouter()
@@ -39,8 +40,8 @@ export default function PharmacyTemplatesPage() {
       id: 1,
       name: 'Modern Pharmacy',
       description: 'Clean and modern design',
-      image: '/first_temp.png',
-      price: 299,
+      image: '/first_templete.png',
+      price: 25,
       hasAI: true,
       features: ['Modern design', 'Online ordering', 'Featured products', 'AI chatbot', 'Delivery checkout'],
     },
@@ -49,7 +50,7 @@ export default function PharmacyTemplatesPage() {
       name: 'Classic Pharmacy',
       description: 'Traditional design with professional look',
       image: '/sec_temp.png',
-      price: 199,
+      price: 20,
       hasAI: true,
       features: ['Classic design', 'Service pages', 'Product showcase', 'Location map', 'Simple checkout'],
     },
@@ -58,7 +59,7 @@ export default function PharmacyTemplatesPage() {
       name: 'Minimal Pharmacy',
       description: 'Minimalist design focusing on products',
       image: '/third_temp.png',
-      price: 149,
+      price: 15,
       hasAI: false,
       features: ['Clean layout', 'Product focused', 'Quick setup', 'Easy checkout'],
     },
@@ -76,14 +77,13 @@ export default function PharmacyTemplatesPage() {
 
   const handlePaymentSuccess = () => {
     if (templateToPay) {
-      // Store selected template
-      localStorage.setItem('selectedTemplate', templateToPay.toString())
+      // Store selected template (user-scoped)
+      setScopedItem('selectedTemplate', templateToPay.toString())
       const selected = templates.find((t) => t.id === templateToPay)
       if (selected) {
-        localStorage.setItem('totalPrice', selected.price.toString())
-        // Store subscription start date for billing info (1 month period)
+        setScopedItem('totalPrice', selected.price.toString())
         const now = new Date().toISOString()
-        localStorage.setItem('templateSubscriptionStartedAt', now)
+        setScopedItem('templateSubscriptionStartedAt', now)
       }
 
       // Persist selection to backend (best-effort; user stays unblocked if it fails)

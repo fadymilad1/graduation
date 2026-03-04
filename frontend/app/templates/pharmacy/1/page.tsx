@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useState, Suspense } from 'react'
 import { FiClock, FiMapPin, FiPhoneCall, FiShoppingBag, FiShield, FiTruck, FiCheck, FiArrowRight, FiShoppingCart } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
 import { useSearchParams } from 'next/navigation'
+import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, setSiteOwnerId } from '@/lib/storage'
 
 type PharmacySetup = {
   phone?: string
@@ -74,36 +75,39 @@ function PharmacyTemplate1PageContent() {
   const [addedToCart, setAddedToCart] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    if (isDemo) {
-      return
-    }
-    setPharmacySetup(safeJsonParse<PharmacySetup>(localStorage.getItem('pharmacySetup')))
-    setBusinessInfo(safeJsonParse<BusinessInfo>(localStorage.getItem('businessInfo')))
+    if (isDemo) return
+    const user = getStoredUser()
+    if (user?.id) setSiteOwnerId(user.id)
+    setPharmacySetup(safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup')))
+    setBusinessInfo(safeJsonParse<BusinessInfo>(getSiteItem('businessInfo')))
   }, [isDemo])
 
   useEffect(() => {
-    const savedCart = safeJsonParse<CartItem[]>(localStorage.getItem(cartKey))
+    const raw = isDemo ? typeof window !== 'undefined' ? localStorage.getItem(cartKey) : null : getSiteItem(cartKey)
+    const savedCart = safeJsonParse<CartItem[]>(raw)
     if (savedCart) {
       setCart(savedCart)
       const newSet = new Set<string>()
       savedCart.forEach(item => newSet.add(item.product.id))
       setAddedToCart(newSet)
     }
-  }, [cartKey])
+  }, [cartKey, isDemo])
 
   useEffect(() => {
     if (cart.length > 0) {
-      localStorage.setItem(cartKey, JSON.stringify(cart))
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(cart))
+      else setSiteItem(cartKey, JSON.stringify(cart))
     } else {
-      localStorage.removeItem(cartKey)
+      if (isDemo) localStorage.removeItem(cartKey)
+      else removeSiteItem(cartKey)
     }
-  }, [cart, cartKey])
+  }, [cart, cartKey, isDemo])
 
   const brand = useMemo(() => {
     if (isDemo) {
       return {
         name: 'Modern Pharmacy',
-        logo: '/logo.jpg',
+        logo: '/mod logo.png',
         about: 'Your trusted neighborhood pharmacy for prescriptions, wellness products, and friendly advice.',
         phone: '+1 (555) 123-4567',
         address: '123 Main Street, City',
@@ -206,7 +210,7 @@ function PharmacyTemplate1PageContent() {
           <Link href={withDemo("/templates/pharmacy/1")} className="flex items-center gap-3 group">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center overflow-hidden shadow-lg group-hover:scale-105 transition-transform">
               {isDemo ? (
-                <Image src="/logo.jpg" alt="Logo" width={48} height={48} className="object-cover" />
+                <Image src="/mod logo.png" alt="Logo" width={48} height={48} className="object-cover" />
               ) : brand.logo ? (
                 brand.logo.startsWith('data:') ? (
                   <img src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} className="w-full h-full object-cover" />

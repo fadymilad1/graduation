@@ -6,6 +6,9 @@ import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { FiClock, FiMapPin, FiPhoneCall, FiPlus, FiMinus, FiSearch, FiShoppingCart } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
+import { getSiteItem, setSiteItem, removeSiteItem } from '@/lib/storage'
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 
 type Product = {
   id: string
@@ -14,6 +17,7 @@ type Product = {
   description?: string
   price: string
   inStock: boolean
+  stock?: number
 }
 
 type CartItem = { product: Product; quantity: number }
@@ -21,7 +25,7 @@ type CartItem = { product: Product; quantity: number }
 type PharmacySetup = {
   phone?: string
   address?: string
-  products?: Array<{ name: string; category?: string; description?: string; price?: string; inStock?: boolean }>
+  products?: Array<{ name: string; category?: string; description?: string; price?: string; inStock?: boolean; stock?: number }>
 }
 
 type BusinessInfo = {
@@ -41,11 +45,11 @@ function safeJsonParse<T>(value: string | null): T | null {
 }
 
 const demoProducts: Product[] = [
-  { id: 'd1', name: 'Vitamin D3 2000IU', category: 'Vitamins', description: 'Daily support for bone health and immunity.', price: '$15.99', inStock: true },
-  { id: 'd2', name: 'Allergy Relief 24h', category: 'OTC', description: 'Non-drowsy relief for seasonal allergies.', price: '$13.99', inStock: true },
-  { id: 'd3', name: 'First Aid Kit', category: 'Care', description: 'Essentials for home and travel.', price: '$19.99', inStock: true },
-  { id: 'd4', name: 'Ibuprofen 200mg', category: 'Pain Relief', description: 'Fast pain relief for headaches & fever.', price: '$9.99', inStock: true },
-  { id: 'd5', name: 'Digital Thermometer', category: 'Wellness', description: 'Accurate readings in seconds.', price: '$7.99', inStock: true },
+  { id: 'd1', name: 'Vitamin D3 2000IU', category: 'Vitamins', description: 'Daily support for bone health and immunity.', price: '$15.99', inStock: true, stock: 24 },
+  { id: 'd2', name: 'Allergy Relief 24h', category: 'OTC', description: 'Non-drowsy relief for seasonal allergies.', price: '$13.99', inStock: true, stock: 18 },
+  { id: 'd3', name: 'First Aid Kit', category: 'Care', description: 'Essentials for home and travel.', price: '$19.99', inStock: true, stock: 12 },
+  { id: 'd4', name: 'Ibuprofen 200mg', category: 'Pain Relief', description: 'Fast pain relief for headaches & fever.', price: '$9.99', inStock: true, stock: 30 },
+  { id: 'd5', name: 'Digital Thermometer', category: 'Wellness', description: 'Accurate readings in seconds.', price: '$7.99', inStock: true, stock: 16 },
 ]
 
 function Template2MedicationsContent() {
@@ -67,29 +71,83 @@ function Template2MedicationsContent() {
 
   useEffect(() => {
     if (isDemo) return
-    const setup = safeJsonParse<PharmacySetup>(localStorage.getItem('pharmacySetup'))
-    const list = setup?.products?.filter((p) => p.name?.trim()) ?? []
-    setPharmacyProducts(
-      list.map((p, idx) => ({
-        id: `user-${idx}`,
-        name: p.name,
-        category: p.category || 'General',
-        description: p.description,
-        price: p.price || '$0.00',
-        inStock: p.inStock !== false,
-      }))
-    )
+
+    // Load from backend API when owner is logged in
+    const fetchProducts = async () => {
+      let loadedFromBackend = false
+      
+      try {
+        const token = localStorage.getItem('access_token')   // Fixed: use access_token
+        if (token) {
+          const response = await fetch(`${API_URL}/pharmacy/products/`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            // Only use backend data if we have products
+            if (Array.isArray(data) && data.length > 0) {
+              const apiProducts: Product[] = data.map((p: any, idx: number) => ({
+                id: p.id?.toString() || `api-${idx}`,
+                name: p.name,
+                category: p.category || 'General',
+                description: p.description,
+                price: `$${parseFloat(p.price || 0).toFixed(2)}`,
+                stock: typeof p.stock === 'number' ? p.stock : (p.stock ? parseInt(String(p.stock), 10) : undefined),
+                inStock: p.in_stock !== false && (typeof p.stock === 'number' ? p.stock > 0 : true),
+              }))
+              setPharmacyProducts(apiProducts)
+              loadedFromBackend = true
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load products from API:', err)
+      }
+
+      // If backend didn't provide products, load from localStorage
+      if (!loadedFromBackend) {
+        console.log('Loading products from localStorage...')
+        const setup = safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup'))
+        const list = setup?.products?.filter((p) => p.name?.trim()) ?? []
+        setPharmacyProducts(
+          list.map((p, idx) => {
+            const stock =
+              typeof (p as any).stock === 'number' && !Number.isNaN((p as any).stock) && (p as any).stock >= 0
+                ? Math.floor((p as any).stock)
+                : undefined
+            return {
+              id: `user-${idx}`,
+              name: p.name,
+              category: p.category || 'General',
+              description: p.description,
+              price: p.price || '$0.00',
+              stock,
+              inStock: stock !== undefined ? stock > 0 : p.inStock !== false,
+            }
+          })
+        )
+      }
+    }
+    
+    fetchProducts()
   }, [isDemo])
 
   useEffect(() => {
-    const saved = safeJsonParse<CartItem[]>(localStorage.getItem(cartKey))
+    const raw = isDemo ? localStorage.getItem(cartKey) : getSiteItem(cartKey)
+    const saved = safeJsonParse<CartItem[]>(raw)
     setCart(saved || [])
-  }, [cartKey])
+  }, [cartKey, isDemo])
 
   useEffect(() => {
-    if (cart.length > 0) localStorage.setItem(cartKey, JSON.stringify(cart))
-    else localStorage.removeItem(cartKey)
-  }, [cart, cartKey])
+    if (cart.length > 0) {
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(cart))
+      else setSiteItem(cartKey, JSON.stringify(cart))
+    } else {
+      if (isDemo) localStorage.removeItem(cartKey)
+      else removeSiteItem(cartKey)
+    }
+  }, [cart, cartKey, isDemo])
 
   const allProducts = useMemo(() => (isDemo ? demoProducts : pharmacyProducts), [isDemo, pharmacyProducts])
 
@@ -116,7 +174,14 @@ function Template2MedicationsContent() {
     setCart((prev) => {
       const item = prev.find((i) => i.product.id === productId)
       if (!item) return prev
-      const newQuantity = item.quantity + delta
+      const maxStock = item.product.stock
+      const proposed = item.quantity + delta
+
+      if (maxStock !== undefined && proposed > maxStock) {
+        return prev
+      }
+
+      const newQuantity = proposed
       const updated =
         newQuantity <= 0 ? prev.filter((i) => i.product.id !== productId) : prev.map((i) => (i.product.id === productId ? { ...i, quantity: newQuantity } : i))
       return updated
@@ -124,9 +189,17 @@ function Template2MedicationsContent() {
   }
 
   const addToCart = (product: Product) => {
-    if (!product.inStock) return
+    const maxStock = product.stock
+    if (maxStock !== undefined && maxStock <= 0) return
+    if (!product.inStock && (maxStock === undefined || maxStock <= 0)) return
     setCart((prev) => {
       const existing = prev.find((i) => i.product.id === product.id)
+      const currentQty = existing?.quantity ?? 0
+
+      if (maxStock !== undefined && currentQty >= maxStock) {
+        return prev
+      }
+
       return existing
         ? prev.map((i) => (i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i))
         : [...prev, { product, quantity: 1 }]
@@ -134,9 +207,9 @@ function Template2MedicationsContent() {
   }
 
   const brand = useMemo(() => {
-    if (isDemo) return { name: 'Classic Pharmacy', logo: '/logo.jpg', phone: '+1 (555) 234-5678', address: '45 Health Avenue, City' }
-    const businessInfo = safeJsonParse<BusinessInfo>(localStorage.getItem('businessInfo'))
-    const setup = safeJsonParse<PharmacySetup>(localStorage.getItem('pharmacySetup'))
+    if (isDemo) return { name: 'Classic Pharmacy', logo: '/mod logo.png', phone: '+1 (555) 234-5678', address: '45 Health Avenue, City' }
+    const businessInfo = safeJsonParse<BusinessInfo>(getSiteItem('businessInfo'))
+    const setup = safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup'))
     return {
       name: businessInfo?.name?.trim() || '',
       logo: businessInfo?.logo || null,
@@ -181,7 +254,7 @@ function Template2MedicationsContent() {
             <Link href={withDemo('/templates/pharmacy/2')} className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center overflow-hidden border border-amber-300 shadow-sm">
                 {isDemo ? (
-                  <Image src="/logo.jpg" alt="Logo" width={40} height={40} className="object-cover" />
+                  <Image src="/mod logo.png" alt="Logo" width={40} height={40} className="object-cover" />
                 ) : brand.logo ? (
                   brand.logo.startsWith('data:') ? (
                     <img src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} className="w-full h-full object-cover" />
@@ -300,8 +373,16 @@ function Template2MedicationsContent() {
                       </div>
                       <div className="text-right">
                         <div className="font-bold text-[#2b2118] text-base sm:text-lg">{product.price}</div>
-                        <div className={`text-xs sm:text-sm ${product.inStock ? 'text-success' : 'text-error'}`}>
-                          {product.inStock ? 'In stock' : 'Out of stock'}
+                        <div
+                          className={`text-xs sm:text-sm ${
+                            product.stock === 0 || !product.inStock ? 'text-error' : 'text-success'
+                          }`}
+                        >
+                          {product.stock !== undefined
+                            ? `${product.stock} in stock`
+                            : product.inStock
+                              ? 'Available'
+                              : '0 in stock'}
                         </div>
                       </div>
                     </div>
@@ -322,7 +403,10 @@ function Template2MedicationsContent() {
                         <button
                           type="button"
                           onClick={() => updateQuantity(product.id, 1)}
-                          disabled={!product.inStock}
+                          disabled={
+                            !product.inStock ||
+                            (product.stock !== undefined && quantity >= product.stock)
+                          }
                           aria-label="Increase quantity"
                           className="w-9 h-9 rounded-lg border border-neutral-border flex items-center justify-center hover:bg-neutral-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
@@ -333,7 +417,7 @@ function Template2MedicationsContent() {
                       <button
                         type="button"
                         onClick={() => addToCart(product)}
-                        disabled={!product.inStock}
+                        disabled={!product.inStock || product.stock === 0}
                         className="w-full px-4 py-2 rounded-lg bg-[#7a5c2e] text-white hover:bg-[#624824] transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {product.inStock ? 'Add to Cart' : 'Out of Stock'}

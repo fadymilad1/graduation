@@ -6,6 +6,7 @@ import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { FiArrowLeft, FiCheckCircle, FiClock, FiMapPin, FiPhoneCall, FiShoppingCart } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
+import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, getSiteOwnerId, getPrefixForUserId, getItemForUser, setItemForUser } from '@/lib/storage'
 
 type Product = {
   id: string
@@ -83,7 +84,7 @@ function Template2CheckoutContent() {
 
   const [brand, setBrand] = useState<{ name: string; logo: string | null; phone: string; address: string }>({
     name: isDemo ? 'Classic Pharmacy' : '',
-    logo: isDemo ? '/logo.jpg' : null,
+    logo: isDemo ? '/mod logo.png' : null,
     phone: isDemo ? '+1 (555) 234-5678' : '',
     address: isDemo ? '45 Health Avenue, City' : '',
   })
@@ -122,8 +123,8 @@ function Template2CheckoutContent() {
 
   useEffect(() => {
     if (isDemo) return
-    const businessInfo = safeJsonParse<BusinessInfo>(localStorage.getItem('businessInfo'))
-    const setup = safeJsonParse<PharmacySetup>(localStorage.getItem('pharmacySetup'))
+    const businessInfo = safeJsonParse<BusinessInfo>(getSiteItem('businessInfo'))
+    const setup = safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup'))
     setBrand({
       name: businessInfo?.name?.trim() || '',
       logo: businessInfo?.logo || null,
@@ -133,20 +134,23 @@ function Template2CheckoutContent() {
   }, [isDemo])
 
   useEffect(() => {
-    const savedCart = safeJsonParse<CartItem[]>(localStorage.getItem(cartKey))
-    if (savedCart && savedCart.length > 0) {
-      setCart(savedCart)
-    } else {
-      setCart([])
-    }
+    const raw = isDemo ? localStorage.getItem(cartKey) : getSiteItem(cartKey)
+    const savedCart = safeJsonParse<CartItem[]>(raw)
+    if (savedCart && savedCart.length > 0) setCart(savedCart)
+    else setCart([])
     setCartLoaded(true)
   }, [router, cartKey, isDemo])
 
   useEffect(() => {
     if (!cartLoaded) return
-    if (cart.length > 0) localStorage.setItem(cartKey, JSON.stringify(cart))
-    else localStorage.removeItem(cartKey)
-  }, [cart, cartKey, cartLoaded])
+    if (cart.length > 0) {
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(cart))
+      else setSiteItem(cartKey, JSON.stringify(cart))
+    } else {
+      if (isDemo) localStorage.removeItem(cartKey)
+      else removeSiteItem(cartKey)
+    }
+  }, [cart, cartKey, cartLoaded, isDemo])
 
   const subtotal = useMemo(() => {
     return cart.reduce((sum, item) => {
@@ -228,9 +232,49 @@ function Template2CheckoutContent() {
       total,
       placedAt: new Date().toISOString(),
     }
-    localStorage.setItem(`pharmacy2_order_${orderNum}`, JSON.stringify(order))
+    const ownerId = !isDemo ? (getStoredUser()?.id ?? getSiteOwnerId()) : null
+    if (ownerId) {
+      const prefix = getPrefixForUserId(ownerId)
+      localStorage.setItem(`${prefix}pharmacy2_order_${orderNum}`, JSON.stringify(order))
+      try {
+        const listRaw = getItemForUser(ownerId, 'pharmacyOrders')
+        const list = JSON.parse(listRaw || '[]')
+        list.push({
+          id: orderNum,
+          customerName: formData.fullName?.trim() || 'Customer',
+          customerEmail: formData.email?.trim(),
+          total,
+          status: 'pending',
+          createdAt: order.placedAt,
+          items: cart.map((i) => `${i.product.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`),
+        })
+        setItemForUser(ownerId, 'pharmacyOrders', JSON.stringify(list))
+      } catch {
+        // ignore
+      }
+    } else if (!isDemo) {
+      localStorage.setItem(`pharmacy2_order_${orderNum}`, JSON.stringify(order))
+      try {
+        const list = JSON.parse(localStorage.getItem('pharmacyOrders') || '[]')
+        list.push({
+          id: orderNum,
+          customerName: formData.fullName?.trim() || 'Customer',
+          customerEmail: formData.email?.trim(),
+          total,
+          status: 'pending',
+          createdAt: order.placedAt,
+          items: cart.map((i) => `${i.product.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`),
+        })
+        localStorage.setItem('pharmacyOrders', JSON.stringify(list))
+      } catch {
+        // ignore
+      }
+    } else {
+      localStorage.setItem(`pharmacy2_order_${orderNum}`, JSON.stringify(order))
+    }
 
-    localStorage.removeItem(cartKey)
+    if (isDemo) localStorage.removeItem(cartKey)
+    else removeSiteItem(cartKey)
     setCart([])
     setOrderPlaced(true)
     setIsSubmitting(false)
@@ -339,7 +383,7 @@ function Template2CheckoutContent() {
           <Link href={withDemo('/templates/pharmacy/2')} className="flex items-center gap-3 group">
             <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center overflow-hidden border border-amber-200">
               {isDemo ? (
-                <Image src="/logo.jpg" alt="Logo" width={48} height={48} className="object-cover" />
+                <Image src="/mod logo.png" alt="Logo" width={48} height={48} className="object-cover" />
               ) : brand.logo ? (
                 brand.logo.startsWith('data:') ? (
                   <img src={brand.logo} alt={`${brand.name} logo`} className="w-full h-full object-cover" />

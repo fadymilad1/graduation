@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Toggle } from '@/components/ui/Toggle'
 import { Input } from '@/components/ui/Input'
 import { FiSend, FiMessageSquare, FiLock, FiDollarSign } from 'react-icons/fi'
+import { getScopedItem } from '@/lib/storage'
 
 type ChatMessage = {
   id: number
@@ -31,8 +32,8 @@ export default function AIAssistantPage() {
   ])
 
   useEffect(() => {
-    // Check if user has paid for AI chatbot feature
-    const selectedFeatures = localStorage.getItem('selectedFeatures')
+    // Check if user has paid for AI chatbot feature (user-scoped)
+    const selectedFeatures = getScopedItem('selectedFeatures')
     const userData = localStorage.getItem('user')
     
     if (userData) {
@@ -45,8 +46,7 @@ export default function AIAssistantPage() {
       setHasAIChatbot(features.aiChatbot === true)
     }
 
-    // For pharmacy users, check if they selected a template with AI
-    const selectedTemplate = localStorage.getItem('selectedTemplate')
+    const selectedTemplate = getScopedItem('selectedTemplate')
     if (userType === 'pharmacy' && selectedTemplate) {
       const templateId = parseInt(selectedTemplate)
       // Templates 1 and 2 include AI (Modern and Classic)

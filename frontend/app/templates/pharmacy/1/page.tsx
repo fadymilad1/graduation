@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useState, Suspense } from 'react'
 import { FiClock, FiMapPin, FiPhoneCall, FiShoppingBag, FiShield, FiTruck, FiCheck, FiArrowRight, FiShoppingCart } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
 import { useSearchParams } from 'next/navigation'
+import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, setSiteOwnerId } from '@/lib/storage'
 
 type PharmacySetup = {
   phone?: string
@@ -41,6 +42,7 @@ type Product = {
   description?: string
   price: string
   inStock: boolean
+  stock?: number
 }
 
 type CartItem = {
@@ -74,36 +76,63 @@ function PharmacyTemplate1PageContent() {
   const [addedToCart, setAddedToCart] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    if (isDemo) {
-      return
-    }
-    setPharmacySetup(safeJsonParse<PharmacySetup>(localStorage.getItem('pharmacySetup')))
-    setBusinessInfo(safeJsonParse<BusinessInfo>(localStorage.getItem('businessInfo')))
+    if (isDemo) return
+    const user = getStoredUser()
+    if (user?.id) setSiteOwnerId(user.id)
+    setPharmacySetup(safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup')))
+    setBusinessInfo(safeJsonParse<BusinessInfo>(getSiteItem('businessInfo')))
   }, [isDemo])
 
+    useEffect(() => {
+      if (isDemo) return
+      const localInfo = safeJsonParse<BusinessInfo>(getSiteItem('businessInfo'))
+      if (!localInfo?.logo) {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+        if (token) {
+          const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
+          fetch(`${API_URL}/business-info/`, { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+              if (data?.logo_url) {
+                setBusinessInfo(prev => ({ ...(prev || {}), logo: data.logo_url }))
+                try {
+                  const existing = getSiteItem('businessInfo')
+                  const parsed = safeJsonParse<BusinessInfo>(existing) || {}
+                  setSiteItem('businessInfo', JSON.stringify({ ...parsed, logo: data.logo_url }))
+                } catch { /* ignore */ }
+              }
+            })
+            .catch(() => {})
+        }
+      }
+    }, [isDemo])
+
   useEffect(() => {
-    const savedCart = safeJsonParse<CartItem[]>(localStorage.getItem(cartKey))
+    const raw = isDemo ? typeof window !== 'undefined' ? localStorage.getItem(cartKey) : null : getSiteItem(cartKey)
+    const savedCart = safeJsonParse<CartItem[]>(raw)
     if (savedCart) {
       setCart(savedCart)
       const newSet = new Set<string>()
       savedCart.forEach(item => newSet.add(item.product.id))
       setAddedToCart(newSet)
     }
-  }, [cartKey])
+  }, [cartKey, isDemo])
 
   useEffect(() => {
     if (cart.length > 0) {
-      localStorage.setItem(cartKey, JSON.stringify(cart))
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(cart))
+      else setSiteItem(cartKey, JSON.stringify(cart))
     } else {
-      localStorage.removeItem(cartKey)
+      if (isDemo) localStorage.removeItem(cartKey)
+      else removeSiteItem(cartKey)
     }
-  }, [cart, cartKey])
+  }, [cart, cartKey, isDemo])
 
   const brand = useMemo(() => {
     if (isDemo) {
       return {
         name: 'Modern Pharmacy',
-        logo: '/logo.jpg',
+        logo: '/mod logo.png',
         about: 'Your trusted neighborhood pharmacy for prescriptions, wellness products, and friendly advice.',
         phone: '+1 (555) 123-4567',
         address: '123 Main Street, City',
@@ -124,27 +153,36 @@ function PharmacyTemplate1PageContent() {
     return { name, logo, about, phone, address, openHours }
   }, [businessInfo, pharmacySetup, isDemo])
 
-  const products = useMemo(() => {
+  const productCatalog = useMemo(() => {
     if (isDemo) {
       return [
-        { id: '1', name: 'Ibuprofen 200mg', category: 'Pain Relief', description: 'Fast pain relief for headaches & fever.', price: '$9.99', inStock: true },
-        { id: '2', name: 'Vitamin C 1000mg', category: 'Vitamins', description: 'Daily immune support.', price: '$12.50', inStock: true },
-        { id: '3', name: 'Digital Thermometer', category: 'Wellness', description: 'Accurate readings in seconds.', price: '$7.99', inStock: true },
+        { id: '1', name: 'Ibuprofen 200mg', category: 'Pain Relief', description: 'Fast pain relief for headaches & fever.', price: '$9.99', inStock: true, stock: 35 },
+        { id: '2', name: 'Vitamin C 1000mg', category: 'Vitamins', description: 'Daily immune support.', price: '$12.50', inStock: true, stock: 48 },
+        { id: '3', name: 'Digital Thermometer', category: 'Wellness', description: 'Accurate readings in seconds.', price: '$7.99', inStock: true, stock: 12 },
+        { id: '4', name: 'Allergy Relief 24h', category: 'OTC', description: 'Non-drowsy daily allergy protection.', price: '$13.20', inStock: true, stock: 21 },
+        { id: '5', name: 'Cough Syrup', category: 'OTC', description: 'Comforting multi-symptom cough care.', price: '$10.40', inStock: true, stock: 15 },
+        { id: '6', name: 'Omega-3 Fish Oil', category: 'Vitamins', description: 'Supports heart and brain wellness.', price: '$19.90', inStock: true, stock: 9 },
       ]
     }
     
     const list = pharmacySetup?.products?.filter((p) => p.name?.trim()) ?? []
-    const productList = list.map((p, idx) => ({
+    return list.map((p, idx) => ({
       id: `user-${idx}`,
       name: p.name,
       category: p.category || 'General',
       description: p.description,
       price: p.price || '$0.00',
+      stock: typeof (p as any).stock === 'number' ? Math.max(0, Math.floor((p as any).stock)) : undefined,
       inStock: p.inStock !== false,
     }))
-    
-    return productList.slice(0, 3)
   }, [pharmacySetup, isDemo])
+
+  const products = useMemo(() => productCatalog.slice(0, 3), [productCatalog])
+
+  const categoryChips = useMemo(() => {
+    const set = new Set(productCatalog.map((p) => p.category).filter(Boolean))
+    return Array.from(set).slice(0, 8)
+  }, [productCatalog])
 
   const cartItemCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart])
 
@@ -206,7 +244,7 @@ function PharmacyTemplate1PageContent() {
           <Link href={withDemo("/templates/pharmacy/1")} className="flex items-center gap-3 group">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center overflow-hidden shadow-lg group-hover:scale-105 transition-transform">
               {isDemo ? (
-                <Image src="/logo.jpg" alt="Logo" width={48} height={48} className="object-cover" />
+                <Image src="/mod logo.png" alt="Logo" width={48} height={48} className="object-cover" />
               ) : brand.logo ? (
                 brand.logo.startsWith('data:') ? (
                   <img src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} className="w-full h-full object-cover" />
@@ -423,6 +461,19 @@ function PharmacyTemplate1PageContent() {
               <p className="mt-3 text-neutral-gray max-w-2xl text-lg">
                 Shop our most popular medications and wellness products. Add to cart directly or browse our full catalog.
               </p>
+              {categoryChips.length > 0 && (
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {categoryChips.map((category) => (
+                    <Link
+                      key={category}
+                      href={withDemo(`/templates/pharmacy/1/medications?category=${encodeURIComponent(category)}`)}
+                      className="px-3 py-1.5 rounded-full border border-neutral-border bg-white text-sm text-neutral-dark hover:border-primary hover:text-primary transition-colors"
+                    >
+                      {category}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -497,6 +548,40 @@ function PharmacyTemplate1PageContent() {
               </div>
             </>
           )}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-4 py-8">
+        <div className="rounded-2xl border border-primary/25 bg-gradient-to-r from-primary-light/35 via-white to-primary-light/20 p-6 sm:p-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+            <div className="md:col-span-2">
+              <h3 className="text-2xl font-bold text-neutral-dark">Need help choosing the right product?</h3>
+              <p className="mt-2 text-neutral-gray">
+                Use our AI assistant for symptom-aware guidance, or contact the pharmacy team for refill and availability support.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3 text-sm text-neutral-dark">
+                <span className="px-3 py-1 rounded-full bg-white border border-neutral-border">Medication guidance</span>
+                <span className="px-3 py-1 rounded-full bg-white border border-neutral-border">Refill support</span>
+                <span className="px-3 py-1 rounded-full bg-white border border-neutral-border">Specialty recommendations</span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-3">
+              <Link
+                href={withDemo('/templates/pharmacy/1/medications')}
+                className="inline-flex items-center justify-center px-5 py-3 rounded-xl bg-primary text-white hover:bg-primary-dark transition-colors font-semibold"
+              >
+                Browse Catalog
+              </Link>
+              {brand.phone && (
+                <a
+                  href={`tel:${brand.phone}`}
+                  className="inline-flex items-center justify-center px-5 py-3 rounded-xl border border-neutral-border text-neutral-dark hover:bg-white transition-colors font-semibold"
+                >
+                  Call Pharmacist
+                </a>
+              )}
+            </div>
+          </div>
         </div>
       </section>
 

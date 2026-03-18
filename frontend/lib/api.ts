@@ -1,10 +1,27 @@
 // API configuration and utility functions
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 
 export interface ApiResponse<T> {
   data?: T
   error?: string
+}
+
+export interface ChatbotAssistantPayload {
+  content: string
+  follow_up_questions: string[]
+  possible_conditions: string[]
+  recommended_specialties: string[]
+  guidance: string[]
+  urgency: 'self_care' | 'routine' | 'urgent' | 'emergency'
+  seek_emergency_care: boolean
+  confidence_note: string
+  disclaimer: string
+}
+
+export interface ChatbotResponsePayload {
+  conversation_id: string
+  assistant: ChatbotAssistantPayload
 }
 
 // Get auth token from localStorage
@@ -174,6 +191,30 @@ export const websiteSetupApiV2 = {
       method: 'PATCH',
       body: JSON.stringify(data),
     })
+  },
+}
+
+export const chatbotApi = {
+  sendMessage: async (payload: {
+    message: string
+    conversation_id?: string
+    subdomain?: string
+    visitor_id?: string
+    locale?: string
+    patient_profile?: Record<string, unknown>
+  }) => {
+    return apiRequest<ChatbotResponsePayload>('/chatbot/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  getConversation: async (conversationId: string, subdomain?: string) => {
+    const params = new URLSearchParams({ conversation_id: conversationId })
+    if (subdomain) {
+      params.set('subdomain', subdomain)
+    }
+    return apiRequest(`/chatbot/?${params.toString()}`)
   },
 }
 

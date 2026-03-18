@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import { Toggle } from '@/components/ui/Toggle'
 import { PaymentModal } from '@/components/payment/PaymentModal'
 import { FiDollarSign, FiUser, FiPlus, FiTrash2 } from 'react-icons/fi'
+import { setScopedItem } from '@/lib/storage'
 
 interface Feature {
   key: string
@@ -51,11 +52,6 @@ export default function HospitalSetupPage() {
     ambulanceOrdering: false,
     patientPortal: false,
     prescriptionRefill: false,
-    
-    // Contact
-    phone: '',
-    email: '',
-    address: '',
     
     // Departments with doctors
     departments: [
@@ -206,9 +202,9 @@ export default function HospitalSetupPage() {
   }
 
   const handlePaymentSuccess = () => {
-    // Store selected features
-    localStorage.setItem('selectedFeatures', JSON.stringify(formData))
-    localStorage.setItem('totalPrice', totalPrice.toString())
+    // Store selected features (user-scoped)
+    setScopedItem('selectedFeatures', JSON.stringify(formData))
+    setScopedItem('totalPrice', totalPrice.toString())
     // Redirect to business info
     router.push('/dashboard/business-info?type=hospital')
   }
@@ -257,35 +253,6 @@ export default function HospitalSetupPage() {
                   </div>
                 </div>
               ))}
-            </div>
-          </Card>
-
-          {/* Contact Information */}
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold text-neutral-dark mb-6">Contact Information</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Phone"
-                placeholder="+1 (555) 123-4567"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
-              <Input
-                label="Email"
-                type="email"
-                placeholder="contact@hospital.com"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-              <div className="col-span-2">
-                <Textarea
-                  label="Address"
-                  placeholder="123 Medical Street, City, State, ZIP"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  rows={3}
-                />
-              </div>
             </div>
           </Card>
 

@@ -5,6 +5,8 @@ import Link from 'next/link'
 import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { FiShoppingCart, FiPlus, FiMinus } from 'react-icons/fi'
+import { AIChatbot } from '@/components/pharmacy/AIChatbot'
+import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, setSiteOwnerId } from '@/lib/storage'
 
 type PharmacySetup = {
   phone?: string
@@ -65,25 +67,57 @@ function Template3HomeContent() {
 
   useEffect(() => {
     if (isDemo) return
-    setPharmacySetup(safeJsonParse<PharmacySetup>(localStorage.getItem('pharmacySetup')))
-    setBusinessInfo(safeJsonParse<BusinessInfo>(localStorage.getItem('businessInfo')))
+    const user = getStoredUser()
+    if (user?.id) setSiteOwnerId(user.id)
+    setPharmacySetup(safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup')))
+    setBusinessInfo(safeJsonParse<BusinessInfo>(getSiteItem('businessInfo')))
   }, [isDemo])
 
-  useEffect(() => {
-    const saved = safeJsonParse<CartItem[]>(localStorage.getItem(cartKey))
-    setCart(saved || [])
-  }, [cartKey])
+    useEffect(() => {
+      if (isDemo) return
+      const localInfo = safeJsonParse<BusinessInfo>(getSiteItem('businessInfo'))
+      if (!localInfo?.logo) {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+        if (token) {
+          const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
+          fetch(`${API_URL}/business-info/`, { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+              if (data?.logo_url) {
+                setBusinessInfo(prev => ({ ...(prev || {}), logo: data.logo_url }))
+                try {
+                  const existing = getSiteItem('businessInfo')
+                  const parsed = safeJsonParse<BusinessInfo>(existing) || {}
+                  setSiteItem('businessInfo', JSON.stringify({ ...parsed, logo: data.logo_url }))
+                } catch { /* ignore */ }
+              }
+            })
+            .catch(() => {})
+        }
+      }
+    }, [isDemo])
 
   useEffect(() => {
-    if (cart.length > 0) localStorage.setItem(cartKey, JSON.stringify(cart))
-    else localStorage.removeItem(cartKey)
-  }, [cart, cartKey])
+    const raw = isDemo ? localStorage.getItem(cartKey) : getSiteItem(cartKey)
+    const saved = safeJsonParse<CartItem[]>(raw)
+    setCart(saved || [])
+  }, [cartKey, isDemo])
+
+  useEffect(() => {
+    if (cart.length > 0) {
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(cart))
+      else setSiteItem(cartKey, JSON.stringify(cart))
+    } else {
+      if (isDemo) localStorage.removeItem(cartKey)
+      else removeSiteItem(cartKey)
+    }
+  }, [cart, cartKey, isDemo])
 
   const brand = useMemo(() => {
     if (isDemo) {
       return {
         name: 'Minimal Pharmacy',
-        logo: '/logo.jpg',
+        logo: '/mod logo.png',
         about: 'Simple, fast, and focused on the products your patients need every day.',
         phone: '+1 (555) 345-6789',
         address: '12 Simple Street, City',
@@ -176,7 +210,8 @@ function Template3HomeContent() {
           )
         : [...prev, { product, quantity: 1 }]
 
-      localStorage.setItem(cartKey, JSON.stringify(updated))
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(updated))
+      else setSiteItem(cartKey, JSON.stringify(updated))
       return updated
     })
   }
@@ -192,7 +227,8 @@ function Template3HomeContent() {
           : prev.map((i) =>
               i.product.id === productId ? { ...i, quantity: newQuantity } : i,
             )
-      localStorage.setItem(cartKey, JSON.stringify(updated))
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(updated))
+      else setSiteItem(cartKey, JSON.stringify(updated))
       return updated
     })
   }
@@ -205,14 +241,14 @@ function Template3HomeContent() {
           <Link href={withDemo('/templates/pharmacy/3')} className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-neutral-light flex items-center justify-center overflow-hidden border border-neutral-border">
               {isDemo ? (
-                <Image src="/logo.jpg" alt="Logo" width={40} height={40} className="object-cover" />
-              ) : brand.logo ? (
+                <Image src="/mod logo.png" alt="Logo" width={40} height={40} className="object-cover" />
+              ) : (brand.logo && brand.logo.trim() !== '') ? (
                 brand.logo.startsWith('data:') ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={brand.logo}
                     alt={`${brand.name || 'Pharmacy'} logo`}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain p-0.5"
                   />
                 ) : (
                   <Image
@@ -220,7 +256,7 @@ function Template3HomeContent() {
                     alt={`${brand.name || 'Pharmacy'} logo`}
                     width={40}
                     height={40}
-                    className="object-cover"
+                    className="object-contain p-0.5"
                   />
                 )
               ) : (
@@ -393,6 +429,12 @@ function Template3HomeContent() {
           <div className="opacity-80">Template 3 • Minimal Pharmacy</div>
         </div>
       </footer>
+
+      <AIChatbot
+        pharmacyName={brand.name || (isDemo ? 'Minimal Pharmacy' : 'Pharmacy')}
+        pharmacyPhone={brand.phone || ''}
+        enabled={!isDemo}
+      />
     </div>
   )
 }

@@ -62,35 +62,35 @@ export default function LandingPage() {
   const pricingPlans = [
     {
       name: 'Hospital Websites',
-      price: 'From $39',
+      price: 'From $19',
       period: 'one-time per feature',
       features: [
-        'Pay once for each feature you enable',
-        'AI Chatbot: $29/month subscription',
-        'Review System: $49 one-time',
-        'Ambulance Ordering: $79 one-time',
+        'Pay once for each feature you enable (now much lower)',
+        'AI Chatbot: $15/month subscription',
+        'Review System: $20 one-time',
+        'Ambulance Ordering: $25 one-time',
       ],
     },
     {
       name: 'Pharmacy Templates',
-      price: '$149 - $299',
+      price: '$15 - $25',
       period: 'one-time',
       features: [
-        'Minimal Pharmacy template: $149',
-        'Classic Pharmacy template: $199',
-        'Modern Pharmacy + AI template: $299',
+        'Minimal Pharmacy template: $15',
+        'Classic Pharmacy template: $20',
+        'Modern Pharmacy + AI template: $25',
         'AI chatbot included with Modern Pharmacy template',
       ],
       popular: true,
     },
     {
       name: 'Add-ons & Extras',
-      price: 'From $39',
+      price: 'From $15',
       period: 'one-time',
       features: [
-        'Prescription Refill module: $39 one-time',
-        'AI Chatbot: $29/month subscription',
-        'Review System: $49 one-time',
+        'Prescription Refill module: $15 one-time',
+        'AI Chatbot: $15/month subscription',
+        'Review System: $20 one-time',
         'Extend your website later with more features anytime',
       ],
     },
@@ -109,14 +109,14 @@ export default function LandingPage() {
       role: 'Pharmacy Owner',
       company: 'HealthPlus Pharmacy',
       content: 'The templates are beautiful and the AI assistant is a game-changer for managing our online presence.',
-      rating: 5,
+      rating: 4,
     },
     {
       name: 'Dr. Emily Rodriguez',
       role: 'Clinic Director',
       company: 'Family Care Clinic',
       content: 'Best investment we made. Our patient bookings increased by 40% after launching our Medify website.',
-      rating: 5,
+      rating: 4,
     },
     {
       name: 'Dr. Ahmed Hassan',
@@ -130,14 +130,14 @@ export default function LandingPage() {
       role: 'Pharmacy Manager',
       company: 'CarePlus Pharmacy',
       content: 'Online orders and prescription refills became much easier for our patients after using Medify templates.',
-      rating: 5,
+      rating: 3,
     },
     {
       name: 'Dr. Omar Ali',
       role: 'Clinic Owner',
       company: 'Downtown Medical Clinic',
       content: 'The booking system and AI assistant helped us reduce phone calls and increase online appointments.',
-      rating: 5,
+      rating: 4,
     },
     {
       name: 'Dr. Lina Mansour',
@@ -151,14 +151,14 @@ export default function LandingPage() {
       role: 'IT Manager',
       company: 'GreenLife Pharmacy Group',
       content: 'We manage multiple pharmacy websites from one place now. Medify saved us a lot of time and cost.',
-      rating: 5,
+      rating: 4,
     },
     {
       name: 'Dr. Mariam El-Shenawy',
       role: 'Dermatology Consultant',
       company: 'Glow Skin Clinic',
       content: 'The clean design and SEO-friendly structure helped new patients discover our clinic faster.',
-      rating: 5,
+      rating: 4,
     },
   ]
 
@@ -244,7 +244,7 @@ export default function LandingPage() {
           <Link href="/" className="flex items-center gap-2 sm:gap-3">
             <div className="relative h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0">
               <Image
-                src="/Gemini_Generated_logo.png"
+                src="/mod logo.png"
                 alt="Medify logo"
                 fill
                 className="object-contain"
@@ -291,7 +291,7 @@ export default function LandingPage() {
           <div className="relative h-64 sm:h-80 order-1 md:order-2 w-full max-w-full">
             <div className="absolute inset-0 rounded-2xl sm:rounded-3xl overflow-hidden shadow-xl w-full">
               <Image
-                src="/hero-hospital.jpg"
+                src="/logo.png"
                 alt="Hospital website preview"
                 fill
                 className="object-cover"
@@ -479,7 +479,7 @@ export default function LandingPage() {
             <div className="bg-white rounded-lg p-6 sm:p-8 shadow-lg w-full max-w-full">
               <div className="bg-neutral-light rounded-lg p-0 h-64 overflow-hidden relative w-full max-w-full">
                 <Image
-                  src="/chatbot.jpg"
+                  src="/chatbot.webp"
                   alt="AI assistant chatbot helping build a medical website"
                   fill
                   className="object-contain"

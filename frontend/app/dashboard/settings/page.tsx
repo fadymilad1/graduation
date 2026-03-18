@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { FiLogOut } from 'react-icons/fi'
+import { getScopedItem } from '@/lib/storage'
 
 export default function SettingsPage() {
   const [profileData, setProfileData] = useState({
@@ -19,7 +20,6 @@ export default function SettingsPage() {
     startedAt: string
     renewAt: string
   } | null>(null)
-  const [domain, setDomain] = useState('myhospital.medify.com')
 
   // Load signed-in user info from localStorage so real name/email appear
   useEffect(() => {
@@ -41,12 +41,12 @@ export default function SettingsPage() {
     }
   }, [])
 
-  // Load pharmacy template subscription info (if any) from localStorage
+  // Load pharmacy template subscription info (if any) from localStorage (user-scoped)
   useEffect(() => {
     try {
-      const templateIdRaw = localStorage.getItem('selectedTemplate')
-      const priceRaw = localStorage.getItem('totalPrice')
-      const startedRaw = localStorage.getItem('templateSubscriptionStartedAt')
+      const templateIdRaw = getScopedItem('selectedTemplate')
+      const priceRaw = getScopedItem('totalPrice')
+      const startedRaw = getScopedItem('templateSubscriptionStartedAt')
 
       if (!templateIdRaw || !priceRaw || !startedRaw) {
         setSubscriptionPlan(null)
@@ -155,23 +155,6 @@ export default function SettingsPage() {
               from the Pharmacy Templates page.
             </p>
           )}
-        </div>
-      </Card>
-
-      {/* Domain Settings */}
-      <Card className="p-6">
-        <h2 className="text-xl font-semibold text-neutral-dark mb-6">Domain Settings</h2>
-        <div className="space-y-4">
-          <Input
-            label="Current Domain"
-            value={domain}
-            onChange={(e) => setDomain(e.target.value)}
-            disabled
-          />
-          <p className="text-sm text-neutral-gray">
-            To use a custom domain, please contact support or upgrade to Enterprise plan.
-          </p>
-          <Button variant="secondary">Configure Custom Domain</Button>
         </div>
       </Card>
 

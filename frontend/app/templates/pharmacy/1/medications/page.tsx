@@ -6,6 +6,9 @@ import React, { useEffect, useMemo, useState, Suspense } from 'react'
 import { FiSearch, FiShoppingCart, FiPlus, FiMinus, FiClock, FiMapPin, FiPhoneCall } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
 import { useSearchParams } from 'next/navigation'
+import { getSiteItem, setSiteItem, removeSiteItem } from '@/lib/storage'
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 
 type Product = {
   id: string
@@ -14,6 +17,7 @@ type Product = {
   description?: string
   price: string
   inStock: boolean
+  stock?: number
 }
 
 type CartItem = {
@@ -24,7 +28,7 @@ type CartItem = {
 type PharmacySetup = {
   phone?: string
   address?: string
-  products?: Array<{ name: string; category?: string; description?: string; price?: string; inStock?: boolean }>
+  products?: Array<{ name: string; category?: string; description?: string; price?: string; inStock?: boolean; stock?: number }>
 }
 
 type BusinessInfo = {
@@ -33,6 +37,8 @@ type BusinessInfo = {
   contactPhone?: string
   address?: string
 }
+
+type SortOption = 'featured' | 'name_asc' | 'price_low' | 'price_high' | 'stock_high'
 
 function safeJsonParse<T>(value: string | null): T | null {
   if (!value) return null
@@ -44,33 +50,34 @@ function safeJsonParse<T>(value: string | null): T | null {
 }
 
 const defaultMedications: Product[] = [
-  { id: '1', name: 'Ibuprofen 200mg', category: 'Pain Relief', description: 'Fast pain relief for headaches & fever. Non-prescription.', price: '$9.99', inStock: true },
-  { id: '2', name: 'Acetaminophen 500mg', category: 'Pain Relief', description: 'Effective for pain and fever reduction.', price: '$7.50', inStock: true },
-  { id: '3', name: 'Aspirin 81mg', category: 'Pain Relief', description: 'Low-dose aspirin for heart health.', price: '$5.99', inStock: true },
-  { id: '4', name: 'Naproxen 220mg', category: 'Pain Relief', description: 'Extended relief for muscle aches.', price: '$12.99', inStock: true },
-  { id: '5', name: 'Vitamin C 1000mg', category: 'Vitamins', description: 'Daily immune support with antioxidants.', price: '$12.50', inStock: true },
-  { id: '6', name: 'Vitamin D3 2000IU', category: 'Vitamins', description: 'Bone health and immune function support.', price: '$15.99', inStock: true },
-  { id: '7', name: 'Multivitamin Daily', category: 'Vitamins', description: 'Complete daily nutrition supplement.', price: '$18.75', inStock: true },
-  { id: '8', name: 'Omega-3 Fish Oil', category: 'Vitamins', description: 'Heart and brain health support.', price: '$22.50', inStock: true },
-  { id: '9', name: 'Allergy Relief', category: 'OTC', description: 'Non-drowsy allergy support for seasonal symptoms.', price: '$14.25', inStock: true },
-  { id: '10', name: 'Nasal Decongestant', category: 'OTC', description: 'Relief from nasal congestion.', price: '$8.99', inStock: true },
-  { id: '11', name: 'Cough Syrup', category: 'OTC', description: 'Multi-symptom cough and cold relief.', price: '$11.50', inStock: true },
-  { id: '12', name: 'Antihistamine Tablets', category: 'OTC', description: '24-hour allergy relief.', price: '$13.99', inStock: true },
-  { id: '13', name: 'Digital Thermometer', category: 'Wellness', description: 'Accurate readings in seconds.', price: '$7.99', inStock: true },
-  { id: '14', name: 'Blood Pressure Monitor', category: 'Wellness', description: 'Home monitoring device.', price: '$45.99', inStock: true },
-  { id: '15', name: 'First Aid Kit', category: 'Care', description: 'Essentials for home and travel.', price: '$19.99', inStock: true },
-  { id: '16', name: 'Hand Sanitizer 500ml', category: 'Care', description: 'Alcohol-based sanitizer.', price: '$4.99', inStock: true },
-  { id: '17', name: 'Metformin 500mg', category: 'Prescription', description: 'Requires prescription. Diabetes management.', price: '$24.99', inStock: true },
-  { id: '18', name: 'Lisinopril 10mg', category: 'Prescription', description: 'Requires prescription. Blood pressure control.', price: '$19.50', inStock: true },
-  { id: '19', name: 'Atorvastatin 20mg', category: 'Prescription', description: 'Requires prescription. Cholesterol management.', price: '$28.75', inStock: true },
-  { id: '20', name: 'Baby Care Bundle', category: 'Family', description: 'Gentle essentials for newborn care.', price: '$24.99', inStock: false },
-  { id: '21', name: 'Children\'s Tylenol', category: 'Family', description: 'Safe pain relief for children.', price: '$9.50', inStock: true },
-  { id: '22', name: 'Prenatal Vitamins', category: 'Family', description: 'Essential nutrients for expecting mothers.', price: '$16.99', inStock: true },
+  { id: '1', name: 'Ibuprofen 200mg', category: 'Pain Relief', description: 'Fast pain relief for headaches & fever. Non-prescription.', price: '$9.99', inStock: true, stock: 40 },
+  { id: '2', name: 'Acetaminophen 500mg', category: 'Pain Relief', description: 'Effective for pain and fever reduction.', price: '$7.50', inStock: true, stock: 35 },
+  { id: '3', name: 'Aspirin 81mg', category: 'Pain Relief', description: 'Low-dose aspirin for heart health.', price: '$5.99', inStock: true, stock: 50 },
+  { id: '4', name: 'Naproxen 220mg', category: 'Pain Relief', description: 'Extended relief for muscle aches.', price: '$12.99', inStock: true, stock: 25 },
+  { id: '5', name: 'Vitamin C 1000mg', category: 'Vitamins', description: 'Daily immune support with antioxidants.', price: '$12.50', inStock: true, stock: 30 },
+  { id: '6', name: 'Vitamin D3 2000IU', category: 'Vitamins', description: 'Bone health and immune function support.', price: '$15.99', inStock: true, stock: 30 },
+  { id: '7', name: 'Multivitamin Daily', category: 'Vitamins', description: 'Complete daily nutrition supplement.', price: '$18.75', inStock: true, stock: 20 },
+  { id: '8', name: 'Omega-3 Fish Oil', category: 'Vitamins', description: 'Heart and brain health support.', price: '$22.50', inStock: true, stock: 18 },
+  { id: '9', name: 'Allergy Relief', category: 'OTC', description: 'Non-drowsy allergy support for seasonal symptoms.', price: '$14.25', inStock: true, stock: 26 },
+  { id: '10', name: 'Nasal Decongestant', category: 'OTC', description: 'Relief from nasal congestion.', price: '$8.99', inStock: true, stock: 22 },
+  { id: '11', name: 'Cough Syrup', category: 'OTC', description: 'Multi-symptom cough and cold relief.', price: '$11.50', inStock: true, stock: 15 },
+  { id: '12', name: 'Antihistamine Tablets', category: 'OTC', description: '24-hour allergy relief.', price: '$13.99', inStock: true, stock: 28 },
+  { id: '13', name: 'Digital Thermometer', category: 'Wellness', description: 'Accurate readings in seconds.', price: '$7.99', inStock: true, stock: 12 },
+  { id: '14', name: 'Blood Pressure Monitor', category: 'Wellness', description: 'Home monitoring device.', price: '$45.99', inStock: true, stock: 8 },
+  { id: '15', name: 'First Aid Kit', category: 'Care', description: 'Essentials for home and travel.', price: '$19.99', inStock: true, stock: 16 },
+  { id: '16', name: 'Hand Sanitizer 500ml', category: 'Care', description: 'Alcohol-based sanitizer.', price: '$4.99', inStock: true, stock: 60 },
+  { id: '17', name: 'Metformin 500mg', category: 'Prescription', description: 'Requires prescription. Diabetes management.', price: '$24.99', inStock: true, stock: 14 },
+  { id: '18', name: 'Lisinopril 10mg', category: 'Prescription', description: 'Requires prescription. Blood pressure control.', price: '$19.50', inStock: true, stock: 18 },
+  { id: '19', name: 'Atorvastatin 20mg', category: 'Prescription', description: 'Requires prescription. Cholesterol management.', price: '$28.75', inStock: true, stock: 10 },
+  { id: '20', name: 'Baby Care Bundle', category: 'Family', description: 'Gentle essentials for newborn care.', price: '$24.99', inStock: false, stock: 0 },
+  { id: '21', name: 'Children\'s Tylenol', category: 'Family', description: 'Safe pain relief for children.', price: '$9.50', inStock: true, stock: 24 },
+  { id: '22', name: 'Prenatal Vitamins', category: 'Family', description: 'Essential nutrients for expecting mothers.', price: '$16.99', inStock: true, stock: 20 },
 ]
 
 function MedicationsPageContent() {
   const searchParams = useSearchParams()
   const isDemo = searchParams?.get('demo') === '1' || searchParams?.get('demo') === 'true'
+  const queryCategory = searchParams?.get('category') || ''
   const cartKey = isDemo ? 'pharmacy_cart_demo' : 'pharmacy_cart'
   const withDemo = (path: string) => {
     if (!isDemo) return path
@@ -81,42 +88,99 @@ function MedicationsPageContent() {
   
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
+  const [sortBy, setSortBy] = useState<SortOption>('featured')
+  const [inStockOnly, setInStockOnly] = useState(false)
   const [cart, setCart] = useState<CartItem[]>([])
   const [pharmacyProducts, setPharmacyProducts] = useState<Product[]>([])
 
   useEffect(() => {
     if (!isDemo) {
-      const setup = safeJsonParse<PharmacySetup>(localStorage.getItem('pharmacySetup'))
-      if (setup?.products) {
-        const userProducts: Product[] = setup.products
-          .filter((p) => p.name?.trim())
-          .map((p, idx) => ({
-            id: `user-${idx}`,
-            name: p.name,
-            category: p.category || 'General',
-            description: p.description,
-            price: p.price || '$0.00',
-            inStock: p.inStock !== false,
-          }))
-        setPharmacyProducts(userProducts)
+      // Load from backend API when owner is logged in
+      const fetchProducts = async () => {
+        let loadedFromBackend = false
+        
+        try {
+          const token = localStorage.getItem('access_token')
+          if (token) {
+            const response = await fetch(`${API_URL}/pharmacy/products/`, {
+              headers: { 'Authorization': `Bearer ${token}` },
+            })
+            
+            if (response.ok) {
+              const data = await response.json()
+              const dataList = Array.isArray(data)
+                ? data
+                : Array.isArray((data as any)?.results)
+                  ? (data as any).results
+                  : []
+              // Only use backend data if we have products
+              if (dataList.length > 0) {
+                const apiProducts: Product[] = dataList.map((p: any, idx: number) => ({
+                  id: p.id?.toString() || `api-${idx}`,
+                  name: p.name,
+                  category: p.category || 'General',
+                  description: p.description,
+                  price: `$${parseFloat(p.price || 0).toFixed(2)}`,
+                  stock: typeof p.stock === 'number' ? p.stock : (p.stock ? parseInt(String(p.stock), 10) : undefined),
+                  inStock: p.in_stock !== false && (typeof p.stock === 'number' ? p.stock > 0 : true),
+                }))
+                setPharmacyProducts(apiProducts)
+                loadedFromBackend = true
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load products from API:', err)
+        }
+        
+        // If backend didn't provide products, load from localStorage
+        if (!loadedFromBackend) {
+          console.log('Loading products from localStorage...')
+
+          const setup = safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup'))
+          if (setup?.products) {
+            const userProducts: Product[] = setup.products
+              .filter((p) => p.name?.trim())
+              .map((p, idx) => ({
+                id: `user-${idx}`,
+                name: p.name,
+                category: p.category || 'General',
+                description: p.description,
+                price: p.price || '$0.00',
+                stock: typeof (p as any).stock === 'number' && !Number.isNaN((p as any).stock) && (p as any).stock >= 0
+                  ? Math.floor((p as any).stock)
+                  : undefined,
+                inStock:
+                  typeof (p as any).stock === 'number'
+                    ? (p as any).stock > 0
+                    : p.inStock !== false,
+              }))
+            setPharmacyProducts(userProducts)
+          } else {
+            console.log('No products found in localStorage either')
+          }
+        }
       }
+      
+      fetchProducts()
     }
   }, [isDemo])
 
   useEffect(() => {
-    const savedCart = safeJsonParse<CartItem[]>(localStorage.getItem(cartKey))
-    if (savedCart) {
-      setCart(savedCart)
-    }
-  }, [cartKey])
+    const raw = isDemo ? localStorage.getItem(cartKey) : getSiteItem(cartKey)
+    const savedCart = safeJsonParse<CartItem[]>(raw)
+    if (savedCart) setCart(savedCart)
+  }, [cartKey, isDemo])
 
   useEffect(() => {
     if (cart.length > 0) {
-      localStorage.setItem(cartKey, JSON.stringify(cart))
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(cart))
+      else setSiteItem(cartKey, JSON.stringify(cart))
     } else {
-      localStorage.removeItem(cartKey)
+      if (isDemo) localStorage.removeItem(cartKey)
+      else removeSiteItem(cartKey)
     }
-  }, [cart, cartKey])
+  }, [cart, cartKey, isDemo])
 
   const allProducts = useMemo(() => {
     if (isDemo) {
@@ -129,6 +193,20 @@ function MedicationsPageContent() {
     const cats = new Set(allProducts.map((p) => p.category))
     return ['All', ...Array.from(cats).sort()]
   }, [allProducts])
+
+  useEffect(() => {
+    if (!queryCategory) return
+    const normalized = queryCategory.trim().toLowerCase()
+    const matched = categories.find((c) => c.toLowerCase() === normalized)
+    if (matched) {
+      setSelectedCategory(matched)
+    }
+  }, [queryCategory, categories])
+
+  const parsePrice = (priceText: string) => {
+    const numeric = parseFloat((priceText || '').replace(/[^0-9.]/g, ''))
+    return Number.isNaN(numeric) ? 0 : numeric
+  }
 
   const filteredProducts = useMemo(() => {
     let filtered = allProducts
@@ -147,14 +225,50 @@ function MedicationsPageContent() {
       )
     }
 
-    return filtered
-  }, [allProducts, selectedCategory, searchQuery])
+    if (inStockOnly) {
+      filtered = filtered.filter((p) => (p.stock !== undefined ? p.stock > 0 : p.inStock !== false))
+    }
+
+    const sorted = [...filtered]
+    switch (sortBy) {
+      case 'name_asc':
+        sorted.sort((a, b) => a.name.localeCompare(b.name))
+        break
+      case 'price_low':
+        sorted.sort((a, b) => parsePrice(a.price) - parsePrice(b.price))
+        break
+      case 'price_high':
+        sorted.sort((a, b) => parsePrice(b.price) - parsePrice(a.price))
+        break
+      case 'stock_high':
+        sorted.sort((a, b) => (b.stock || 0) - (a.stock || 0))
+        break
+      default:
+        sorted.sort((a, b) => {
+          const inStockA = a.stock !== undefined ? a.stock > 0 : a.inStock !== false
+          const inStockB = b.stock !== undefined ? b.stock > 0 : b.inStock !== false
+          if (inStockA !== inStockB) return inStockA ? -1 : 1
+          return a.name.localeCompare(b.name)
+        })
+        break
+    }
+
+    return sorted
+  }, [allProducts, selectedCategory, searchQuery, inStockOnly, sortBy])
 
   const addToCart = (product: Product) => {
-    if (!product.inStock) return
+    const maxStock = product.stock
+    if (maxStock !== undefined && maxStock <= 0) return
+    if (!product.inStock && (maxStock === undefined || maxStock <= 0)) return
 
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id)
+      const currentQty = existing?.quantity ?? 0
+
+      if (maxStock !== undefined && currentQty >= maxStock) {
+        return prev
+      }
+
       const updated = existing
         ? prev.map((item) =>
             item.product.id === product.id
@@ -162,8 +276,9 @@ function MedicationsPageContent() {
               : item
           )
         : [...prev, { product, quantity: 1 }]
-      
-      localStorage.setItem(cartKey, JSON.stringify(updated))
+
+      if (isDemo) localStorage.setItem(cartKey, JSON.stringify(updated))
+      else setSiteItem(cartKey, JSON.stringify(updated))
       return updated
     })
   }
@@ -173,15 +288,24 @@ function MedicationsPageContent() {
       const item = prev.find((i) => i.product.id === productId)
       if (!item) return prev
 
-      const newQuantity = item.quantity + delta
+      const maxStock = item.product.stock
+      const proposed = item.quantity + delta
+
+      if (maxStock !== undefined && proposed > maxStock) {
+        return prev
+      }
+
+      const newQuantity = proposed
       const updated = newQuantity <= 0
         ? prev.filter((i) => i.product.id !== productId)
         : prev.map((i) => (i.product.id === productId ? { ...i, quantity: newQuantity } : i))
-      
+
       if (updated.length > 0) {
-        localStorage.setItem(cartKey, JSON.stringify(updated))
+        if (isDemo) localStorage.setItem(cartKey, JSON.stringify(updated))
+        else setSiteItem(cartKey, JSON.stringify(updated))
       } else {
-        localStorage.removeItem(cartKey)
+        if (isDemo) localStorage.removeItem(cartKey)
+        else removeSiteItem(cartKey)
       }
       return updated
     })
@@ -191,12 +315,23 @@ function MedicationsPageContent() {
     return cart.reduce((sum, item) => sum + item.quantity, 0)
   }, [cart])
 
+  const cartSubtotal = useMemo(() => {
+    return cart.reduce((sum, item) => {
+      const itemPrice = parsePrice(item.product.price)
+      return sum + itemPrice * item.quantity
+    }, 0)
+  }, [cart])
+
+  const inStockCount = useMemo(() => {
+    return allProducts.filter((p) => (p.stock !== undefined ? p.stock > 0 : p.inStock !== false)).length
+  }, [allProducts])
+
   const brand = useMemo(() => {
     if (isDemo) {
-      return { name: 'Modern Pharmacy', logo: '/logo.jpg', phone: '+1 (555) 123-4567', address: '123 Main Street, City' }
+      return { name: 'Modern Pharmacy', logo: '/mod logo.png', phone: '+1 (555) 123-4567', address: '123 Main Street, City' }
     }
-    const businessInfo = safeJsonParse<BusinessInfo>(localStorage.getItem('businessInfo'))
-    const setup = safeJsonParse<PharmacySetup>(localStorage.getItem('pharmacySetup'))
+    const businessInfo = safeJsonParse<BusinessInfo>(getSiteItem('businessInfo'))
+    const setup = safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup'))
     return {
       name: businessInfo?.name?.trim() || '',
       logo: businessInfo?.logo || null,
@@ -240,7 +375,7 @@ function MedicationsPageContent() {
           <Link href={withDemo("/templates/pharmacy/1")} className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary-light flex items-center justify-center overflow-hidden">
               {isDemo ? (
-                <Image src="/logo.jpg" alt="Logo" width={40} height={40} className="object-cover" />
+                <Image src="/mod logo.png" alt="Logo" width={40} height={40} className="object-cover" />
               ) : brand.logo ? (
                 brand.logo.startsWith('data:') ? (
                   <img src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} className="w-full h-full object-cover" />
@@ -287,21 +422,21 @@ function MedicationsPageContent() {
       {/* Search & Filters */}
       <section className="bg-neutral-light/50 border-b border-neutral-border">
         <div className="mx-auto max-w-7xl px-4 py-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            {/* Search Bar */}
-            <div className="flex-1 relative">
-              <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-neutral-gray" size={20} />
+          {/* Search bar: full width on its own row so you can see what you type */}
+          <div className="w-full mb-4">
+            <div className="relative w-full max-w-full">
+              <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-gray pointer-events-none" size={22} />
               <input
                 type="text"
                 placeholder="Search medications, vitamins, products..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-neutral-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                className="w-full min-w-0 pl-12 pr-4 py-3.5 text-base border border-neutral-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
               />
             </div>
-
-            {/* Category Filter */}
-            <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0">
+          </div>
+          {/* Category Filter */}
+          <div className="flex gap-2 overflow-x-auto pb-2">
               {categories.map((cat) => (
                 <button
                   key={cat}
@@ -315,13 +450,69 @@ function MedicationsPageContent() {
                   {cat}
                 </button>
               ))}
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="rounded-lg border border-neutral-border bg-white px-4 py-3">
+              <div className="text-xs text-neutral-gray">Products</div>
+              <div className="text-lg font-bold text-neutral-dark">{allProducts.length}</div>
             </div>
+            <div className="rounded-lg border border-neutral-border bg-white px-4 py-3">
+              <div className="text-xs text-neutral-gray">In Stock</div>
+              <div className="text-lg font-bold text-success">{inStockCount}</div>
+            </div>
+            <div className="rounded-lg border border-neutral-border bg-white px-4 py-3">
+              <div className="text-xs text-neutral-gray">Categories</div>
+              <div className="text-lg font-bold text-neutral-dark">{Math.max(categories.length - 1, 0)}</div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <label htmlFor="sort-products" className="text-sm text-neutral-gray">Sort</label>
+              <select
+                id="sort-products"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                className="px-3 py-2 border border-neutral-border rounded-lg bg-white text-sm"
+              >
+                <option value="featured">Featured</option>
+                <option value="name_asc">Name A-Z</option>
+                <option value="price_low">Price Low to High</option>
+                <option value="price_high">Price High to Low</option>
+                <option value="stock_high">Stock High to Low</option>
+              </select>
+            </div>
+            <label className="inline-flex items-center gap-2 text-sm text-neutral-dark">
+              <input
+                type="checkbox"
+                checked={inStockOnly}
+                onChange={(e) => setInStockOnly(e.target.checked)}
+                className="w-4 h-4"
+              />
+              Show in-stock only
+            </label>
           </div>
         </div>
       </section>
 
       {/* Products Grid */}
       <section className="mx-auto max-w-7xl px-4 py-8">
+        {cartItemCount > 0 && (
+          <div className="mb-6 rounded-xl border border-primary/20 bg-primary-light/40 px-4 py-3 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm text-neutral-dark font-medium">{cartItemCount} items in cart</div>
+              <div className="text-xs text-neutral-gray">Subtotal: ${cartSubtotal.toFixed(2)}</div>
+            </div>
+            <Link
+              href={withDemo("/templates/pharmacy/1/checkout")}
+              className="px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors text-sm font-medium"
+            >
+              Proceed to Checkout
+            </Link>
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-neutral-dark">
             {selectedCategory === 'All' ? 'All Medications & Products' : selectedCategory}
@@ -353,6 +544,16 @@ function MedicationsPageContent() {
             {filteredProducts.map((product) => {
               const cartItem = cart.find((item) => item.product.id === product.id)
               const quantity = cartItem?.quantity || 0
+              const stockValue = typeof product.stock === 'number' ? product.stock : undefined
+              const isOutOfStock = stockValue !== undefined ? stockValue <= 0 : !product.inStock
+              const isLowStock = stockValue !== undefined && stockValue > 0 && stockValue < 5
+              const stockLabel = isOutOfStock
+                ? 'Out of stock'
+                : isLowStock
+                  ? `Low stock (${stockValue})`
+                  : stockValue !== undefined
+                    ? `In stock (${stockValue})`
+                    : 'Available'
 
               return (
                 <div
@@ -366,8 +567,12 @@ function MedicationsPageContent() {
                     </div>
                     <div className="text-right">
                       <div className="font-bold text-primary">{product.price}</div>
-                      <div className={`text-xs ${product.inStock ? 'text-success' : 'text-error'}`}>
-                        {product.inStock ? 'In stock' : 'Out of stock'}
+                      <div
+                        className={`text-xs font-medium ${
+                          isOutOfStock ? 'text-error' : isLowStock ? 'text-amber-600' : 'text-success'
+                        }`}
+                      >
+                        {stockLabel}
                       </div>
                     </div>
                   </div>
@@ -388,7 +593,10 @@ function MedicationsPageContent() {
                       <span className="flex-1 text-center font-medium text-neutral-dark">{quantity}</span>
                       <button
                         onClick={() => updateQuantity(product.id, 1)}
-                        disabled={!product.inStock}
+                        disabled={
+                          !product.inStock ||
+                          (product.stock !== undefined && quantity >= product.stock)
+                        }
                         aria-label="Increase quantity"
                         className="w-8 h-8 rounded-lg border border-neutral-border flex items-center justify-center hover:bg-neutral-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
@@ -398,10 +606,10 @@ function MedicationsPageContent() {
                   ) : (
                     <button
                       onClick={() => addToCart(product)}
-                      disabled={!product.inStock}
+                      disabled={isOutOfStock}
                       className="w-full px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {product.inStock ? 'Add to Cart' : 'Out of Stock'}
+                      {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
                     </button>
                   )}
                 </div>

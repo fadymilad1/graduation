@@ -1,8 +1,9 @@
 'use client'
 
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useLayoutEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { FiBell, FiSearch, FiMenu } from 'react-icons/fi'
+import { getScopedItem, setScopedItem } from '@/lib/storage'
 
 interface TopbarProps {
   onMenuClick?: () => void
@@ -58,6 +59,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchItem[]>([])
   const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const [searchDropdownRect, setSearchDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null)
 
   const searchItems: SearchItem[] = [
     {
@@ -124,7 +126,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
   }, [])
 
   useEffect(() => {
-    const storedNotifications = localStorage.getItem('notifications')
+    const storedNotifications = getScopedItem('notifications')
     if (storedNotifications) {
       try {
         const parsed = JSON.parse(storedNotifications)
@@ -138,7 +140,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
   }, [])
 
   useEffect(() => {
-    localStorage.setItem('notifications', JSON.stringify(notifications))
+    setScopedItem('notifications', JSON.stringify(notifications))
   }, [notifications])
 
   useEffect(() => {
@@ -161,6 +163,19 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [isDropdownOpen])
+
+  useLayoutEffect(() => {
+    if (!isSearchOpen || !searchRef.current) {
+      setSearchDropdownRect(null)
+      return
+    }
+    const rect = searchRef.current.getBoundingClientRect()
+    setSearchDropdownRect({
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+    })
+  }, [isSearchOpen, searchQuery])
 
   useEffect(() => {
     const handleSearchClickOutside = (event: MouseEvent) => {
@@ -245,54 +260,66 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
     handleSearchSelect(searchResults[0])
   }
 
-  return (
-    <div className="h-16 bg-white border-b border-neutral-border flex items-center justify-between px-4 sm:px-6 overflow-x-hidden w-full max-w-full">
-      <button
-        onClick={onMenuClick}
-        className="md:hidden p-2 text-neutral-gray hover:text-neutral-dark transition-colors mr-2"
-        aria-label="Open sidebar menu"
-        title="Open menu"
+  const searchDropdownEl =
+    isSearchOpen && searchDropdownRect && typeof document !== 'undefined' ? (
+      <div
+        ref={searchDropdownRef}
+        className="fixed bg-white border border-neutral-border rounded-lg shadow-lg z-50 max-h-[min(16rem,60vh)] overflow-y-auto"
+        style={{
+          top: searchDropdownRect.top,
+          left: searchDropdownRect.left,
+          width: searchDropdownRect.width,
+        }}
       >
-        <FiMenu size={24} />
-      </button>
-      <div className="flex-1 max-w-md hidden sm:block relative" ref={searchRef}>
-        <form className="relative" onSubmit={handleSearchSubmit}>
-          <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-neutral-gray" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={handleSearchChange}
-            placeholder="Search pages, actions..."
-            className="w-full pl-10 pr-4 py-2 border border-neutral-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-          />
-          {isSearchOpen && (
-            <div
-              ref={searchDropdownRef}
-              className="absolute left-0 right-0 mt-2 bg-white border border-neutral-border rounded-lg shadow-lg z-40"
-            >
-              {searchResults.length === 0 ? (
-                <p className="text-sm text-neutral-gray px-4 py-3">No matches found.</p>
-              ) : (
-                searchResults.map((result) => {
-                  const key = `${resolveHref(result) || result.label}-${result.label}`
-                  return (
-                    <button
-                      type="button"
-                      key={key}
-                      onClick={() => handleSearchSelect(result)}
-                      className="w-full text-left px-4 py-3 hover:bg-neutral-light transition-colors"
-                    >
-                      <p className="text-sm text-neutral-dark font-medium">{result.label}</p>
-                      <p className="text-xs text-neutral-gray">{result.description}</p>
-                    </button>
-                  )
-                })
-              )}
-            </div>
-          )}
-        </form>
+        {searchResults.length === 0 ? (
+          <p className="text-sm text-neutral-gray px-4 py-3">No matches found.</p>
+        ) : (
+          searchResults.map((result) => {
+            const key = `${resolveHref(result) || result.label}-${result.label}`
+            return (
+              <button
+                type="button"
+                key={key}
+                onClick={() => handleSearchSelect(result)}
+                className="w-full text-left px-4 py-3 hover:bg-neutral-light transition-colors first:rounded-t-lg last:rounded-b-lg"
+              >
+                <p className="text-sm text-neutral-dark font-medium">{result.label}</p>
+                <p className="text-xs text-neutral-gray">{result.description}</p>
+              </button>
+            )
+          })
+        )}
       </div>
-      <div className="flex items-center gap-2 sm:gap-4 ml-auto">
+    ) : null
+
+  return (
+    <>
+      {searchDropdownEl}
+      <div className="h-16 shrink-0 bg-white border-b border-neutral-border flex items-center justify-between px-4 sm:px-6 overflow-hidden w-full max-w-full">
+        <button
+          onClick={onMenuClick}
+          className="md:hidden p-2 text-neutral-gray hover:text-neutral-dark transition-colors mr-2 shrink-0"
+          aria-label="Open sidebar menu"
+          title="Open menu"
+        >
+          <FiMenu size={24} />
+        </button>
+        <div className="flex-1 min-w-0 max-w-md hidden sm:block" ref={searchRef}>
+          <form onSubmit={handleSearchSubmit}>
+            <div className="relative">
+              <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-neutral-gray pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                onFocus={() => searchQuery.trim() && setIsSearchOpen(true)}
+                placeholder="Search pages, actions..."
+                className="w-full pl-10 pr-4 py-2 border border-neutral-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+              />
+            </div>
+          </form>
+        </div>
+      <div className="flex items-center gap-2 sm:gap-4 ml-auto shrink-0">
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={toggleDropdown}
@@ -361,6 +388,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
         </div>
       </div>
     </div>
+    </>
   )
 }
 

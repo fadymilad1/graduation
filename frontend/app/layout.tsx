@@ -6,9 +6,9 @@ export const metadata: Metadata = {
   description: 'Medical website builder for Hospitals, Clinics, and Pharmacies',
   viewport: 'width=device-width, initial-scale=1',
   icons: {
-    icon: '/Gemini_Generated_logo.png',
-    apple: '/Gemini_Generated_logo.png',
-    shortcut: '/Gemini_Generated_logo.png',
+    icon: '/mod logo.png',
+    apple: '/mod logo.png',
+    shortcut: '/mod logo.png',
   },
 }
 

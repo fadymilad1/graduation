@@ -1,5 +1,6 @@
 from .auth import api_root, signup, login, get_current_user
 from .business_info import BusinessInfoViewSet
+from .chatbot import ChatbotAPIView
 from .website_setup import WebsiteSetupViewSet
 
 __all__ = [
@@ -8,5 +9,6 @@ __all__ = [
     'login',
     'get_current_user',
     'BusinessInfoViewSet',
+    'ChatbotAPIView',
     'WebsiteSetupViewSet',
 ]

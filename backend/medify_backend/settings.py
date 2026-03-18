@@ -219,3 +219,13 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+
+# Hugging Face chatbot settings
+HF_MEDICAL_MODEL_ID = config('HF_MEDICAL_MODEL_ID', default='microsoft/Phi-3-mini-4k-instruct')
+HUGGINGFACE_API_TOKEN = config('HUGGINGFACE_API_TOKEN', default='')
+HUGGINGFACE_API_URL = config(
+    'HUGGINGFACE_API_URL',
+    default='https://router.huggingface.co/v1/chat/completions',
+)
+CHATBOT_HTTP_TIMEOUT = config('CHATBOT_HTTP_TIMEOUT', default=60, cast=int)
+CHATBOT_STREAM_CHUNK_SIZE = config('CHATBOT_STREAM_CHUNK_SIZE', default=28, cast=int)

@@ -11,12 +11,19 @@ class Product(models.Model):
     category = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    in_stock = models.BooleanField(default=True)
+    stock = models.PositiveIntegerField(default=0, help_text="Quantity available in stock")
+    in_stock = models.BooleanField(default=True)  # Keep for backward compatibility
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        # Auto-update in_stock based on stock quantity
+        self.in_stock = self.stock > 0
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
 
     class Meta:
         db_table = 'api_product'
+        ordering = ['-created_at']

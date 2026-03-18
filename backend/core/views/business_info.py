@@ -18,7 +18,10 @@ class BusinessInfoViewSet(viewsets.ModelViewSet):
         return BusinessInfoSerializer
 
     def get_object(self):
-        website_setup = WebsiteSetup.objects.get(user=self.request.user)
+        website_setup, _ = WebsiteSetup.objects.get_or_create(
+            user=self.request.user,
+            defaults={'subdomain': self.request.user.email.split('@')[0]}
+        )
         business_info, created = BusinessInfo.objects.get_or_create(website_setup=website_setup)
         return business_info
 
@@ -31,7 +34,10 @@ class BusinessInfoViewSet(viewsets.ModelViewSet):
         return self.list(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
-        website_setup = WebsiteSetup.objects.get(user=request.user)
+        website_setup, _ = WebsiteSetup.objects.get_or_create(
+            user=request.user,
+            defaults={'subdomain': request.user.email.split('@')[0]}
+        )
         if BusinessInfo.objects.filter(website_setup=website_setup).exists():
             return Response(
                 {'error': 'Business info already exists. Use update endpoint.'},
@@ -45,6 +51,16 @@ class BusinessInfoViewSet(viewsets.ModelViewSet):
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
+        business_info = self.get_object()
+        serializer = self.get_serializer(business_info, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        response_serializer = BusinessInfoSerializer(business_info, context={'request': request})
+        return Response(response_serializer.data)
+    
+    def partial_update(self, request, *args, **kwargs):
+        # Handle PATCH requests to /business-info/ (without ID)
+        # This is called by the frontend
         business_info = self.get_object()
         serializer = self.get_serializer(business_info, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)

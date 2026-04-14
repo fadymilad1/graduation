@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { persistAuthSession } from '@/lib/auth'
 import { FiHome, FiCheckCircle, FiAlertCircle } from 'react-icons/fi'
 
 function SignupForm() {
@@ -103,11 +104,11 @@ function SignupForm() {
       }
 
       // Store user data and tokens
-      localStorage.setItem('user', JSON.stringify(data.user))
-      localStorage.setItem('access_token', data.tokens.access)
-      localStorage.setItem('refresh_token', data.tokens.refresh)
-      localStorage.setItem('isLoggedIn', 'true')
-      localStorage.setItem('website_setup_id', data.website_setup_id)
+      persistAuthSession({
+        user: data.user,
+        tokens: data.tokens,
+        websiteSetupId: data.website_setup_id,
+      })
 
       setSuccess(true)
       

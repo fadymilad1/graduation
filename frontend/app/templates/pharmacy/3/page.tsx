@@ -6,7 +6,10 @@ import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { FiShoppingCart, FiPlus, FiMinus } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
+import { BrandLogo } from '@/components/pharmacy/BrandLogo'
+import { ProductImage } from '@/components/pharmacy/ProductImage'
 import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, setSiteOwnerId } from '@/lib/storage'
+import { getStoredPharmacyThemeSettings, isSectionEnabled } from '@/lib/pharmacyTheme'
 
 type PharmacySetup = {
   phone?: string
@@ -18,6 +21,8 @@ type PharmacySetup = {
     description?: string
     price?: string
     inStock?: boolean
+    imageUrl?: string
+    image_url?: string
   }>
 }
 
@@ -36,6 +41,7 @@ type Product = {
   description?: string
   price: string
   inStock: boolean
+  imageUrl?: string
 }
 
 type CartItem = { product: Product; quantity: number }
@@ -52,13 +58,17 @@ function safeJsonParse<T>(value: string | null): T | null {
 function Template3HomeContent() {
   const searchParams = useSearchParams()
   const isDemo = searchParams?.get('demo') === '1' || searchParams?.get('demo') === 'true'
+  const ownerId = searchParams?.get('owner') || ''
   const cartKey = isDemo ? 'pharmacy3_cart_demo' : 'pharmacy3_cart'
 
   const withDemo = (path: string) => {
-    if (!isDemo) return path
     const [base, hash] = path.split('#')
-    const sep = base.includes('?') ? '&' : '?'
-    return `${base}${sep}demo=1${hash ? `#${hash}` : ''}`
+    const [pathname, query = ''] = base.split('?')
+    const params = new URLSearchParams(query)
+    if (isDemo) params.set('demo', '1')
+    if (ownerId) params.set('owner', ownerId)
+    const nextQuery = params.toString()
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash ? `#${hash}` : ''}`
   }
 
   const [pharmacySetup, setPharmacySetup] = useState<PharmacySetup | null>(null)
@@ -68,34 +78,11 @@ function Template3HomeContent() {
   useEffect(() => {
     if (isDemo) return
     const user = getStoredUser()
-    if (user?.id) setSiteOwnerId(user.id)
+    if (ownerId) setSiteOwnerId(ownerId)
+    else if (user?.id) setSiteOwnerId(user.id)
     setPharmacySetup(safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup')))
     setBusinessInfo(safeJsonParse<BusinessInfo>(getSiteItem('businessInfo')))
-  }, [isDemo])
-
-    useEffect(() => {
-      if (isDemo) return
-      const localInfo = safeJsonParse<BusinessInfo>(getSiteItem('businessInfo'))
-      if (!localInfo?.logo) {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
-        if (token) {
-          const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
-          fetch(`${API_URL}/business-info/`, { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(r => r.ok ? r.json() : null)
-            .then(data => {
-              if (data?.logo_url) {
-                setBusinessInfo(prev => ({ ...(prev || {}), logo: data.logo_url }))
-                try {
-                  const existing = getSiteItem('businessInfo')
-                  const parsed = safeJsonParse<BusinessInfo>(existing) || {}
-                  setSiteItem('businessInfo', JSON.stringify({ ...parsed, logo: data.logo_url }))
-                } catch { /* ignore */ }
-              }
-            })
-            .catch(() => {})
-        }
-      }
-    }, [isDemo])
+  }, [isDemo, ownerId])
 
   useEffect(() => {
     const raw = isDemo ? localStorage.getItem(cartKey) : getSiteItem(cartKey)
@@ -135,6 +122,15 @@ function Template3HomeContent() {
     }
   }, [businessInfo, pharmacySetup, isDemo])
 
+  const themeSettings = useMemo(
+    () => (isDemo ? null : getStoredPharmacyThemeSettings()),
+    [isDemo],
+  )
+
+  const showHero = isDemo || !themeSettings || isSectionEnabled(themeSettings, 'hero')
+  const showFeaturedProducts = isDemo || !themeSettings || isSectionEnabled(themeSettings, 'featuredProducts')
+  const showContactInfo = isDemo || !themeSettings || isSectionEnabled(themeSettings, 'contactInfo')
+
   const products = useMemo<Product[]>(() => {
     if (isDemo) {
       return [
@@ -145,6 +141,7 @@ function Template3HomeContent() {
           description: 'Everyday pain and fever relief.',
           price: '$4.99',
           inStock: true,
+          imageUrl: '/template-1.jpg',
         },
         {
           id: 'm2',
@@ -153,6 +150,7 @@ function Template3HomeContent() {
           description: 'Immune support effervescent tablets.',
           price: '$9.99',
           inStock: true,
+          imageUrl: '/template-2.jpg',
         },
         {
           id: 'm3',
@@ -161,6 +159,7 @@ function Template3HomeContent() {
           description: 'Gentle relief for nasal congestion.',
           price: '$3.99',
           inStock: true,
+          imageUrl: '/template-3.jpg',
         },
         {
           id: 'm4',
@@ -169,6 +168,7 @@ function Template3HomeContent() {
           description: 'Alcohol-based hand sanitizer gel.',
           price: '$4.49',
           inStock: true,
+          imageUrl: '/hero-pharmacy.jpg',
         },
       ].slice(0, 3)
     }
@@ -182,6 +182,7 @@ function Template3HomeContent() {
         description: p.description,
         price: p.price || '$0.00',
         inStock: p.inStock !== false,
+        imageUrl: p.imageUrl || p.image_url || '',
       }))
       .slice(0, 3)
   }, [pharmacySetup, isDemo])
@@ -242,34 +243,21 @@ function Template3HomeContent() {
             <div className="w-10 h-10 rounded-lg bg-neutral-light flex items-center justify-center overflow-hidden border border-neutral-border">
               {isDemo ? (
                 <Image src="/mod logo.png" alt="Logo" width={40} height={40} className="object-cover" />
-              ) : (brand.logo && brand.logo.trim() !== '') ? (
-                brand.logo.startsWith('data:') ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={brand.logo}
-                    alt={`${brand.name || 'Pharmacy'} logo`}
-                    className="w-full h-full object-contain p-0.5"
-                  />
-                ) : (
-                  <Image
-                    src={brand.logo}
-                    alt={`${brand.name || 'Pharmacy'} logo`}
-                    width={40}
-                    height={40}
-                    className="object-contain p-0.5"
-                  />
-                )
               ) : (
-                <div className="w-full h-full bg-neutral-dark text-white flex items-center justify-center text-sm font-bold">
-                  {(brand.name || 'P').charAt(0).toUpperCase()}
-                </div>
+                <BrandLogo
+                  src={brand.logo}
+                  alt={`${brand.name || 'Pharmacy'} logo`}
+                  fallbackText={brand.name || 'P'}
+                  imageClassName="w-full h-full object-contain p-0.5"
+                  fallbackClassName="w-full h-full bg-neutral-dark text-white flex items-center justify-center text-sm font-bold"
+                />
               )}
             </div>
             <div className="leading-tight">
               <div className="font-semibold">
                 {brand.name || (isDemo ? 'Minimal Pharmacy' : 'Your Pharmacy')}
               </div>
-              {brand.address && (
+              {showContactInfo && brand.address && (
                 <div className="text-xs text-neutral-gray truncate max-w-[14rem]">
                   {brand.address}
                 </div>
@@ -278,7 +266,7 @@ function Template3HomeContent() {
           </Link>
 
           <div className="flex items-center gap-3">
-            {brand.phone && (
+            {showContactInfo && brand.phone && (
               <a
                 href={`tel:${brand.phone}`}
                 className="hidden sm:inline text-sm text-neutral-gray hover:text-neutral-dark"
@@ -305,7 +293,8 @@ function Template3HomeContent() {
       {/* Main content */}
       <main className="flex-1">
         {/* Simple hero */}
-        <section className="border-b border-neutral-border bg-neutral-light/60">
+        {showHero ? (
+          <section className="border-b border-neutral-border bg-neutral-light/60">
           <div className="mx-auto max-w-6xl px-4 py-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold">
@@ -325,10 +314,12 @@ function Template3HomeContent() {
               View all products
             </Link>
           </div>
-        </section>
+          </section>
+        ) : null}
 
         {/* Product grid (minimal) */}
-        <section className="mx-auto max-w-6xl px-4 py-10">
+        {showFeaturedProducts ? (
+          <section className="mx-auto max-w-6xl px-4 py-10">
           <div className="flex items-center justify-between gap-2 mb-6">
             <div>
               <h2 className="text-lg sm:text-xl font-semibold">Products</h2>
@@ -358,6 +349,15 @@ function Template3HomeContent() {
                     key={p.id}
                     className="rounded-lg border border-neutral-border bg-white p-4 flex flex-col justify-between"
                   >
+                    <div className="mb-3 h-36 overflow-hidden rounded-lg bg-neutral-light/60">
+                      <ProductImage
+                        src={p.imageUrl}
+                        alt={p.name}
+                        className="h-full w-full object-cover"
+                        fallbackClassName="grid h-full w-full place-items-center bg-neutral-light/60 text-neutral-gray"
+                        fallbackLabel={p.category || 'No product image'}
+                      />
+                    </div>
                     <div>
                       <div className="text-xs text-neutral-gray mb-1">{p.category}</div>
                       <div className="font-semibold text-sm sm:text-base">{p.name}</div>
@@ -417,7 +417,8 @@ function Template3HomeContent() {
               })}
             </div>
           )}
-        </section>
+          </section>
+        ) : null}
       </main>
 
       <footer className="border-t border-neutral-border bg-white">

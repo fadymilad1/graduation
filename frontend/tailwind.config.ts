@@ -10,9 +10,9 @@ const config: Config = {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#1B76FF',
-          dark: '#0C4EB7',
-          light: '#E7F2FF',
+          DEFAULT: 'var(--pharmacy-primary, #1B76FF)',
+          dark: 'var(--pharmacy-secondary, #0C4EB7)',
+          light: 'var(--pharmacy-primary-light, #E7F2FF)',
         },
         neutral: {
           white: '#FFFFFF',
@@ -27,7 +27,7 @@ const config: Config = {
         ai: '#7C3AED',
       },
       fontFamily: {
-        sans: ['Inter', 'Poppins', 'system-ui', 'sans-serif'],
+        sans: ['var(--pharmacy-font-stack, Inter)', 'Inter', 'Poppins', 'system-ui', 'sans-serif'],
       },
     },
   },

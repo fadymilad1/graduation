@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     # Third party apps
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_filters',
     # Local apps
@@ -189,6 +190,7 @@ SIMPLE_JWT = {
 
 # CORS Settings (for Next.js frontend)
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+FRONTEND_PASSWORD_RESET_PATH = config('FRONTEND_PASSWORD_RESET_PATH', default='/reset-password')
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -219,6 +221,19 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+
+# Email settings (used by forgot-password flow)
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='no-reply@medify.local')
+EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST = config('EMAIL_HOST', default='localhost')
+EMAIL_PORT = config('EMAIL_PORT', default=25, cast=int)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=False, cast=bool)
+EMAIL_USE_SSL = config('EMAIL_USE_SSL', default=False, cast=bool)
+
+# Password reset token lifetime in seconds
+PASSWORD_RESET_TIMEOUT = config('PASSWORD_RESET_TIMEOUT', default=3600, cast=int)
 
 # Hugging Face chatbot settings
 HF_MEDICAL_MODEL_ID = config('HF_MEDICAL_MODEL_ID', default='microsoft/Phi-3-mini-4k-instruct')

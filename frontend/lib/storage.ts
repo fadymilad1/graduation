@@ -11,6 +11,69 @@ export type StoredUser = {
   created_at?: string
 }
 
+const FALLBACK_API_BASE_URL = 'http://localhost:8000/api'
+
+function getBackendOrigin(): string {
+  const apiBase = (process.env.NEXT_PUBLIC_API_URL || FALLBACK_API_BASE_URL).trim()
+  return apiBase.replace(/\/api\/?$/i, '')
+}
+
+export function normalizeLogoUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const logo = value.trim()
+  if (!logo) return null
+
+  if (
+    logo.startsWith('data:') ||
+    logo.startsWith('blob:') ||
+    /^https?:\/\//i.test(logo)
+  ) {
+    return logo
+  }
+
+  const backendOrigin = getBackendOrigin()
+  if (logo.startsWith('/media/')) {
+    return `${backendOrigin}${logo}`
+  }
+  if (logo.startsWith('media/')) {
+    return `${backendOrigin}/${logo}`
+  }
+
+  return logo
+}
+
+function normalizeBusinessInfoValue(value: string): string {
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return value
+
+    const currentLogo = normalizeLogoUrl(parsed.logo)
+    const fallbackLogo = normalizeLogoUrl(parsed.logo_url)
+    const resolvedLogo = currentLogo || fallbackLogo
+    if (!resolvedLogo) return value
+
+    const nextPayload: Record<string, unknown> = {
+      ...parsed,
+      logo: resolvedLogo,
+    }
+
+    if (typeof parsed.logo_url === 'string') {
+      nextPayload.logo_url = fallbackLogo || parsed.logo_url
+    }
+
+    return JSON.stringify(nextPayload)
+  } catch {
+    return value
+  }
+}
+
+function normalizeStorageValue(key: string, value: string): string {
+  if (key === 'businessInfo') {
+    return normalizeBusinessInfoValue(value)
+  }
+  return value
+}
+
 function getStoredUserRaw(): StoredUser | null {
   if (typeof window === 'undefined') return null
   try {
@@ -52,7 +115,9 @@ export function getScopedItem(key: string): string | null {
   if (typeof window === 'undefined') return null
   const scoped = prefixKey(key)
   if (scoped === key) return null // no user, don't read global key
-  return localStorage.getItem(scoped)
+  const value = localStorage.getItem(scoped)
+  if (value === null) return null
+  return normalizeStorageValue(key, value)
 }
 
 /** Set item in user-scoped storage. No-op if no user. */
@@ -60,9 +125,10 @@ export function setScopedItem(key: string, value: string): void {
   if (typeof window === 'undefined') return
   const scoped = prefixKey(key)
   if (scoped === key) return
+  const normalizedValue = normalizeStorageValue(key, value)
   
   try {
-    localStorage.setItem(scoped, value)
+    localStorage.setItem(scoped, normalizedValue)
   } catch (error) {
     // Handle quota exceeded error
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
@@ -76,7 +142,7 @@ export function setScopedItem(key: string, value: string): void {
           }
         })
         // Try again after cleanup
-        localStorage.setItem(scoped, value)
+        localStorage.setItem(scoped, normalizedValue)
       } catch (retryError) {
         console.error('Failed to save to localStorage even after cleanup:', retryError)
       }
@@ -112,12 +178,14 @@ export function getSiteOwnerId(): string | null {
 /** Get/set item for a specific user (e.g. when customer places order and we have site owner id). */
 export function getItemForUser(userId: string, key: string): string | null {
   if (typeof window === 'undefined' || !userId) return null
-  return localStorage.getItem(getPrefixForUserId(userId) + key)
+  const value = localStorage.getItem(getPrefixForUserId(userId) + key)
+  if (value === null) return null
+  return normalizeStorageValue(key, value)
 }
 
 export function setItemForUser(userId: string, key: string, value: string): void {
   if (typeof window === 'undefined' || !userId) return
-  localStorage.setItem(getPrefixForUserId(userId) + key, value)
+  localStorage.setItem(getPrefixForUserId(userId) + key, normalizeStorageValue(key, value))
 }
 
 /** Read key for "site" data: scoped when logged in, else global. Use on template pages so owner sees their data and visitors get fallback. */
@@ -125,7 +193,11 @@ export function getSiteItem(key: string): string | null {
   if (typeof window === 'undefined') return null
   const scoped = getScopedItem(key)
   if (scoped !== null) return scoped
-  return localStorage.getItem(key)
+  const publishedMirror = localStorage.getItem(`public_${key}`)
+  if (publishedMirror !== null) return normalizeStorageValue(key, publishedMirror)
+  const globalValue = localStorage.getItem(key)
+  if (globalValue === null) return null
+  return normalizeStorageValue(key, globalValue)
 }
 
 /** Write key for "site" data: scoped when logged in, else global. */
@@ -133,7 +205,7 @@ export function setSiteItem(key: string, value: string): void {
   if (typeof window === 'undefined') return
   const prefix = getStoragePrefix()
   if (prefix) setScopedItem(key, value)
-  else localStorage.setItem(key, value)
+  else localStorage.setItem(key, normalizeStorageValue(key, value))
 }
 
 /** Remove site item. */
@@ -142,4 +214,15 @@ export function removeSiteItem(key: string): void {
   const prefix = getStoragePrefix()
   if (prefix) removeScopedItem(key)
   else localStorage.removeItem(key)
+}
+
+/** Public mirror for published website data (used by visitor-facing template pages). */
+export function setPublicSiteItem(key: string, value: string): void {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(`public_${key}`, normalizeStorageValue(key, value))
+}
+
+export function removePublicSiteItem(key: string): void {
+  if (typeof window === 'undefined') return
+  localStorage.removeItem(`public_${key}`)
 }

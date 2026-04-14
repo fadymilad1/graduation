@@ -6,7 +6,9 @@ import React, { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { FiArrowLeft, FiClock, FiMapPin, FiPhoneCall, FiSend } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
-import { getSiteItem } from '@/lib/storage'
+import { BrandLogo } from '@/components/pharmacy/BrandLogo'
+import { getSiteItem, setSiteOwnerId } from '@/lib/storage'
+import { addPharmacyInboxMessage } from '@/lib/pharmacyInbox'
 
 type PharmacySetup = { phone?: string; address?: string }
 type BusinessInfo = { name?: string; logo?: string; contactPhone?: string; address?: string; workingHours?: Record<string, { open?: string; close?: string; closed?: boolean }> }
@@ -23,12 +25,16 @@ function safeJsonParse<T>(value: string | null): T | null {
 function ContactContent() {
   const searchParams = useSearchParams()
   const isDemo = searchParams?.get('demo') === '1' || searchParams?.get('demo') === 'true'
+  const ownerId = searchParams?.get('owner') || ''
 
   const withDemo = (path: string) => {
-    if (!isDemo) return path
     const [base, hash] = path.split('#')
-    const sep = base.includes('?') ? '&' : '?'
-    return `${base}${sep}demo=1${hash ? `#${hash}` : ''}`
+    const [pathname, query = ''] = base.split('?')
+    const params = new URLSearchParams(query)
+    if (isDemo) params.set('demo', '1')
+    if (ownerId) params.set('owner', ownerId)
+    const nextQuery = params.toString()
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash ? `#${hash}` : ''}`
   }
 
   const [brand, setBrand] = useState<{ name: string; logo: string | null; phone: string; address: string; openHours: string }>({
@@ -38,6 +44,15 @@ function ContactContent() {
     address: isDemo ? '45 Health Avenue, City' : '',
     openHours: isDemo ? 'Mon–Sat 09:00–19:00' : '',
   })
+
+  useEffect(() => {
+    if (ownerId) {
+      setSiteOwnerId(ownerId)
+    }
+  }, [ownerId])
+
+  const [contactForm, setContactForm] = useState({ name: '', email: '', message: '' })
+  const [sent, setSent] = useState(false)
 
   useEffect(() => {
     if (isDemo) return
@@ -55,6 +70,26 @@ function ContactContent() {
       openHours,
     })
   }, [isDemo])
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!contactForm.name.trim() || !contactForm.email.trim() || !contactForm.message.trim()) return
+
+    addPharmacyInboxMessage(
+      {
+        type: 'contact',
+        name: contactForm.name,
+        contact: contactForm.email,
+        message: contactForm.message,
+        source: 'template2-contact',
+      },
+      ownerId || undefined,
+    )
+
+    setContactForm({ name: '', email: '', message: '' })
+    setSent(true)
+    window.setTimeout(() => setSent(false), 2500)
+  }
 
   return (
     <div className="min-h-screen font-serif bg-[radial-gradient(circle_at_20%_20%,rgba(250,242,222,0.9),transparent_45%),linear-gradient(to_bottom,rgba(255,255,255,0.9),rgba(250,246,240,1))]">
@@ -90,16 +125,14 @@ function ContactContent() {
             <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center overflow-hidden border border-amber-300 shadow-sm">
               {isDemo ? (
                 <Image src="/mod logo.png" alt="Logo" width={44} height={44} className="object-cover" />
-              ) : brand.logo ? (
-                brand.logo.startsWith('data:') ? (
-                  <img src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} className="w-full h-full object-cover" />
-                ) : (
-                  <Image src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} width={44} height={44} className="object-cover" />
-                )
               ) : (
-                <div className="w-full h-full bg-[#7a5c2e] flex items-center justify-center text-white font-bold text-xs">
-                  {(brand.name || 'P').charAt(0).toUpperCase()}
-                </div>
+                <BrandLogo
+                  src={brand.logo}
+                  alt={`${brand.name || 'Pharmacy'} logo`}
+                  fallbackText={brand.name || 'P'}
+                  imageClassName="w-full h-full object-cover"
+                  fallbackClassName="w-full h-full bg-[#7a5c2e] flex items-center justify-center text-white font-bold text-xs"
+                />
               )}
             </div>
             <div className="leading-tight">
@@ -144,16 +177,13 @@ function ContactContent() {
             <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
               <div className="font-bold text-neutral-dark">Tip</div>
               <div className="mt-1 text-sm text-neutral-gray">
-                Later we can connect this form to your backend email/support inbox.
+                Messages from this form are saved in the owner dashboard under Orders {'>'} Customer Messages.
               </div>
             </div>
           </div>
 
           <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              alert('Message sent (demo).')
-            }}
+            onSubmit={handleSubmit}
             className="rounded-3xl border-2 border-amber-200 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.06)] space-y-4"
           >
             <div className="text-sm text-neutral-gray tracking-wide">Send a message</div>
@@ -162,6 +192,8 @@ function ContactContent() {
               <input
                 className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-amber-700 focus:border-transparent"
                 placeholder="Your name"
+                value={contactForm.name}
+                onChange={(event) => setContactForm((prev) => ({ ...prev, name: event.target.value }))}
                 required
               />
             </div>
@@ -171,6 +203,8 @@ function ContactContent() {
                 type="email"
                 className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-amber-700 focus:border-transparent"
                 placeholder="you@example.com"
+                value={contactForm.email}
+                onChange={(event) => setContactForm((prev) => ({ ...prev, email: event.target.value }))}
                 required
               />
             </div>
@@ -180,6 +214,8 @@ function ContactContent() {
                 className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-amber-700 focus:border-transparent"
                 rows={5}
                 placeholder="How can we help?"
+                value={contactForm.message}
+                onChange={(event) => setContactForm((prev) => ({ ...prev, message: event.target.value }))}
                 required
               />
             </div>
@@ -191,6 +227,7 @@ function ContactContent() {
               <FiSend />
               Send Message
             </button>
+            {sent ? <p className="text-sm text-success">Message sent to pharmacy owner inbox.</p> : null}
           </form>
         </div>
       </main>

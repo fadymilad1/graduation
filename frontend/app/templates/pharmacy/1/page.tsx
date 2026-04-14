@@ -5,8 +5,12 @@ import Link from 'next/link'
 import React, { useEffect, useMemo, useState, Suspense } from 'react'
 import { FiClock, FiMapPin, FiPhoneCall, FiShoppingBag, FiShield, FiTruck, FiCheck, FiArrowRight, FiShoppingCart } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
+import { BrandLogo } from '@/components/pharmacy/BrandLogo'
+import { ProductImage } from '@/components/pharmacy/ProductImage'
 import { useSearchParams } from 'next/navigation'
 import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, setSiteOwnerId } from '@/lib/storage'
+import { addPharmacyInboxMessage } from '@/lib/pharmacyInbox'
+import { getStoredPharmacyThemeSettings, isSectionEnabled } from '@/lib/pharmacyTheme'
 
 type PharmacySetup = {
   phone?: string
@@ -18,6 +22,8 @@ type PharmacySetup = {
     description?: string
     price?: string
     inStock?: boolean
+    imageUrl?: string
+    image_url?: string
   }>
 }
 
@@ -43,6 +49,7 @@ type Product = {
   price: string
   inStock: boolean
   stock?: number
+  imageUrl?: string
 }
 
 type CartItem = {
@@ -62,50 +69,39 @@ function safeJsonParse<T>(value: string | null): T | null {
 function PharmacyTemplate1PageContent() {
   const searchParams = useSearchParams()
   const isDemo = searchParams?.get('demo') === '1' || searchParams?.get('demo') === 'true'
+  const ownerId = searchParams?.get('owner') || ''
   const cartKey = isDemo ? 'pharmacy_cart_demo' : 'pharmacy_cart'
   const withDemo = (path: string) => {
-    if (!isDemo) return path
     const [base, hash] = path.split('#')
-    const sep = base.includes('?') ? '&' : '?'
-    return `${base}${sep}demo=1${hash ? `#${hash}` : ''}`
+    const [pathname, query = ''] = base.split('?')
+    const params = new URLSearchParams(query)
+    if (isDemo) params.set('demo', '1')
+    if (ownerId) params.set('owner', ownerId)
+    const nextQuery = params.toString()
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash ? `#${hash}` : ''}`
   }
 
   const [pharmacySetup, setPharmacySetup] = useState<PharmacySetup | null>(null)
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo | null>(null)
   const [cart, setCart] = useState<CartItem[]>([])
   const [addedToCart, setAddedToCart] = useState<Set<string>>(new Set())
+  const [quickMessage, setQuickMessage] = useState({ name: '', contact: '', message: '' })
+  const [quickMessageSent, setQuickMessageSent] = useState(false)
+
+  useEffect(() => {
+    if (ownerId) {
+      setSiteOwnerId(ownerId)
+    }
+  }, [ownerId])
 
   useEffect(() => {
     if (isDemo) return
     const user = getStoredUser()
-    if (user?.id) setSiteOwnerId(user.id)
+    if (ownerId) setSiteOwnerId(ownerId)
+    else if (user?.id) setSiteOwnerId(user.id)
     setPharmacySetup(safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup')))
     setBusinessInfo(safeJsonParse<BusinessInfo>(getSiteItem('businessInfo')))
-  }, [isDemo])
-
-    useEffect(() => {
-      if (isDemo) return
-      const localInfo = safeJsonParse<BusinessInfo>(getSiteItem('businessInfo'))
-      if (!localInfo?.logo) {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
-        if (token) {
-          const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
-          fetch(`${API_URL}/business-info/`, { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(r => r.ok ? r.json() : null)
-            .then(data => {
-              if (data?.logo_url) {
-                setBusinessInfo(prev => ({ ...(prev || {}), logo: data.logo_url }))
-                try {
-                  const existing = getSiteItem('businessInfo')
-                  const parsed = safeJsonParse<BusinessInfo>(existing) || {}
-                  setSiteItem('businessInfo', JSON.stringify({ ...parsed, logo: data.logo_url }))
-                } catch { /* ignore */ }
-              }
-            })
-            .catch(() => {})
-        }
-      }
-    }, [isDemo])
+  }, [isDemo, ownerId])
 
   useEffect(() => {
     const raw = isDemo ? typeof window !== 'undefined' ? localStorage.getItem(cartKey) : null : getSiteItem(cartKey)
@@ -153,15 +149,26 @@ function PharmacyTemplate1PageContent() {
     return { name, logo, about, phone, address, openHours }
   }, [businessInfo, pharmacySetup, isDemo])
 
+  const themeSettings = useMemo(
+    () => (isDemo ? null : getStoredPharmacyThemeSettings()),
+    [isDemo],
+  )
+
+  const showHero = isDemo || !themeSettings || isSectionEnabled(themeSettings, 'hero')
+  const showFeaturedProducts = isDemo || !themeSettings || isSectionEnabled(themeSettings, 'featuredProducts')
+  const showCategories = isDemo || !themeSettings || isSectionEnabled(themeSettings, 'categories')
+  const showOffers = isDemo || !themeSettings || isSectionEnabled(themeSettings, 'offers')
+  const showContactInfo = isDemo || !themeSettings || isSectionEnabled(themeSettings, 'contactInfo')
+
   const productCatalog = useMemo(() => {
     if (isDemo) {
       return [
-        { id: '1', name: 'Ibuprofen 200mg', category: 'Pain Relief', description: 'Fast pain relief for headaches & fever.', price: '$9.99', inStock: true, stock: 35 },
-        { id: '2', name: 'Vitamin C 1000mg', category: 'Vitamins', description: 'Daily immune support.', price: '$12.50', inStock: true, stock: 48 },
-        { id: '3', name: 'Digital Thermometer', category: 'Wellness', description: 'Accurate readings in seconds.', price: '$7.99', inStock: true, stock: 12 },
-        { id: '4', name: 'Allergy Relief 24h', category: 'OTC', description: 'Non-drowsy daily allergy protection.', price: '$13.20', inStock: true, stock: 21 },
-        { id: '5', name: 'Cough Syrup', category: 'OTC', description: 'Comforting multi-symptom cough care.', price: '$10.40', inStock: true, stock: 15 },
-        { id: '6', name: 'Omega-3 Fish Oil', category: 'Vitamins', description: 'Supports heart and brain wellness.', price: '$19.90', inStock: true, stock: 9 },
+        { id: '1', name: 'Ibuprofen 200mg', category: 'Pain Relief', description: 'Fast pain relief for headaches & fever.', price: '$9.99', inStock: true, stock: 35, imageUrl: '/template-1.jpg' },
+        { id: '2', name: 'Vitamin C 1000mg', category: 'Vitamins', description: 'Daily immune support.', price: '$12.50', inStock: true, stock: 48, imageUrl: '/template-2.jpg' },
+        { id: '3', name: 'Digital Thermometer', category: 'Wellness', description: 'Accurate readings in seconds.', price: '$7.99', inStock: true, stock: 12, imageUrl: '/template-3.jpg' },
+        { id: '4', name: 'Allergy Relief 24h', category: 'OTC', description: 'Non-drowsy daily allergy protection.', price: '$13.20', inStock: true, stock: 21, imageUrl: '/hero-pharmacy.jpg' },
+        { id: '5', name: 'Cough Syrup', category: 'OTC', description: 'Comforting multi-symptom cough care.', price: '$10.40', inStock: true, stock: 15, imageUrl: '/logo.jpg' },
+        { id: '6', name: 'Omega-3 Fish Oil', category: 'Vitamins', description: 'Supports heart and brain wellness.', price: '$19.90', inStock: true, stock: 9, imageUrl: '/template-1.jpg' },
       ]
     }
     
@@ -174,6 +181,7 @@ function PharmacyTemplate1PageContent() {
       price: p.price || '$0.00',
       stock: typeof (p as any).stock === 'number' ? Math.max(0, Math.floor((p as any).stock)) : undefined,
       inStock: p.inStock !== false,
+      imageUrl: p.imageUrl || p.image_url || '',
     }))
   }, [pharmacySetup, isDemo])
 
@@ -209,34 +217,58 @@ function PharmacyTemplate1PageContent() {
     })
   }
 
+  const handleQuickMessageSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!quickMessage.name.trim() || !quickMessage.contact.trim() || !quickMessage.message.trim()) {
+      return
+    }
+
+    addPharmacyInboxMessage(
+      {
+        type: 'refill',
+        name: quickMessage.name,
+        contact: quickMessage.contact,
+        message: quickMessage.message,
+        source: 'template1-home',
+      },
+      ownerId || undefined,
+    )
+
+    setQuickMessage({ name: '', contact: '', message: '' })
+    setQuickMessageSent(true)
+    window.setTimeout(() => setQuickMessageSent(false), 2500)
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-light/30 via-white to-primary-light/10">
       {/* Top bar */}
-      <div className="bg-gradient-to-r from-neutral-dark via-neutral-dark to-neutral-dark/95 text-white">
-        <div className="mx-auto max-w-6xl px-4 py-2 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between text-sm">
-          <div className="flex items-center gap-2">
-            <FiClock className="text-primary" />
-            <span>{brand.openHours || ''}</span>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-            {brand.phone && (
-              <>
-                <a className="inline-flex items-center gap-2 hover:text-primary transition-colors" href={`tel:${brand.phone}`}>
-                  <FiPhoneCall />
-                  <span>{brand.phone}</span>
-                </a>
-                {brand.address && <span className="hidden sm:inline opacity-60">•</span>}
-              </>
-            )}
-            {brand.address && (
-              <div className="inline-flex items-center gap-2">
-                <FiMapPin className="text-primary" />
-                <span className="truncate max-w-[28rem]">{brand.address}</span>
-              </div>
-            )}
+      {showContactInfo ? (
+        <div className="bg-gradient-to-r from-neutral-dark via-neutral-dark to-neutral-dark/95 text-white">
+          <div className="mx-auto max-w-6xl px-4 py-2 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between text-sm">
+            <div className="flex items-center gap-2">
+              <FiClock className="text-primary" />
+              <span>{brand.openHours || ''}</span>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              {brand.phone && (
+                <>
+                  <a className="inline-flex items-center gap-2 hover:text-primary transition-colors" href={`tel:${brand.phone}`}>
+                    <FiPhoneCall />
+                    <span>{brand.phone}</span>
+                  </a>
+                  {brand.address && <span className="hidden sm:inline opacity-60">•</span>}
+                </>
+              )}
+              {brand.address && (
+                <div className="inline-flex items-center gap-2">
+                  <FiMapPin className="text-primary" />
+                  <span className="truncate max-w-[28rem]">{brand.address}</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
       {/* Header */}
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-neutral-border/50 shadow-sm">
@@ -245,16 +277,14 @@ function PharmacyTemplate1PageContent() {
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center overflow-hidden shadow-lg group-hover:scale-105 transition-transform">
               {isDemo ? (
                 <Image src="/mod logo.png" alt="Logo" width={48} height={48} className="object-cover" />
-              ) : brand.logo ? (
-                brand.logo.startsWith('data:') ? (
-                  <img src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} className="w-full h-full object-cover" />
-                ) : (
-                  <Image src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} width={48} height={48} className="object-cover" />
-                )
               ) : (
-                <div className="w-full h-full bg-primary-dark flex items-center justify-center text-white font-bold">
-                  {(brand.name || 'P').charAt(0).toUpperCase()}
-                </div>
+                <BrandLogo
+                  src={brand.logo}
+                  alt={`${brand.name || 'Pharmacy'} logo`}
+                  fallbackText={brand.name || 'P'}
+                  imageClassName="w-full h-full object-cover"
+                  fallbackClassName="w-full h-full bg-primary-dark flex items-center justify-center text-white font-bold"
+                />
               )}
             </div>
             <div className="leading-tight">
@@ -265,7 +295,9 @@ function PharmacyTemplate1PageContent() {
           <nav className="hidden md:flex items-center gap-6 text-sm">
             <a className="text-neutral-gray hover:text-primary transition-colors font-medium" href="#services">Services</a>
             <Link className="text-neutral-gray hover:text-primary transition-colors font-medium" href={withDemo("/templates/pharmacy/1/medications")}>Medications</Link>
-            <a className="text-neutral-gray hover:text-primary transition-colors font-medium" href="#contact">Contact</a>
+            {showContactInfo ? (
+              <a className="text-neutral-gray hover:text-primary transition-colors font-medium" href="#contact">Contact</a>
+            ) : null}
           </nav>
           <div className="flex items-center gap-2">
             <Link
@@ -291,7 +323,8 @@ function PharmacyTemplate1PageContent() {
       </header>
 
       {/* Hero */}
-      <section className="relative overflow-hidden">
+      {showHero ? (
+        <section className="relative overflow-hidden">
         <div className="absolute inset-0 -z-10">
           {isDemo ? (
             <>
@@ -305,28 +338,22 @@ function PharmacyTemplate1PageContent() {
               <div className="absolute inset-0 bg-gradient-to-br from-neutral-dark/75 via-neutral-dark/65 to-primary/40" />
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(59,130,246,0.15),transparent_50%)]" />
             </>
-          ) : brand.logo ? (
+          ) : (
             <>
-              {brand.logo.startsWith('data:') ? (
-                <img
-                  src={brand.logo}
-                  alt={`${brand.name} hero background`}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <Image
-                  src={brand.logo}
-                  alt={`${brand.name} hero background`}
-                  fill
-                  className="object-cover"
-                  priority
-                />
-              )}
               <div className="absolute inset-0 bg-gradient-to-br from-neutral-dark/75 via-neutral-dark/65 to-primary/40" />
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(59,130,246,0.15),transparent_50%)]" />
+              {brand.logo ? (
+                <div className="absolute inset-0 p-10 opacity-10">
+                  <BrandLogo
+                    src={brand.logo}
+                    alt={`${brand.name || 'Pharmacy'} watermark`}
+                    fallbackText={brand.name || 'P'}
+                    imageClassName="h-full w-full object-contain"
+                    fallbackClassName="hidden"
+                  />
+                </div>
+              ) : null}
             </>
-          ) : (
-            <div className="w-full h-full bg-gradient-to-br from-primary/60 via-primary-dark/70 to-neutral-dark/80" />
           )}
         </div>
 
@@ -353,7 +380,7 @@ function PharmacyTemplate1PageContent() {
                   <FiShoppingBag />
                   Shop Medications
                 </Link>
-                {brand.phone && (
+                {showContactInfo && brand.phone && (
                   <a
                     href={`tel:${brand.phone}`}
                     className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 text-white hover:bg-white/20 transition-all font-semibold text-lg"
@@ -377,36 +404,22 @@ function PharmacyTemplate1PageContent() {
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-neutral-dark/20 to-transparent" />
                 </>
-              ) : brand.logo ? (
-                <div className="w-full h-full flex items-center justify-center p-8">
-                  {brand.logo.startsWith('data:') ? (
-                    <img
-                      src={brand.logo}
-                      alt={`${brand.name} logo`}
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  ) : (
-                    <Image
-                      src={brand.logo}
-                      alt={`${brand.name} logo`}
-                      width={400}
-                      height={400}
-                      className="object-contain"
-                    />
-                  )}
-                </div>
               ) : (
-                <div className="w-full h-full flex items-center justify-center p-8 bg-gradient-to-br from-primary-light/30 to-primary/40">
-                  <div className="text-center text-neutral-dark/60">
-                    <FiShield className="w-24 h-24 mx-auto mb-4" />
-                    <p className="text-lg font-medium">Add your logo in dashboard</p>
-                  </div>
+                <div className="absolute inset-0 p-6 sm:p-10">
+                  <BrandLogo
+                    src={brand.logo}
+                    alt={`${brand.name || 'Pharmacy'} logo`}
+                    fallbackText={brand.name || 'P'}
+                    imageClassName="h-full w-full object-contain"
+                    fallbackClassName="h-full w-full bg-neutral-dark/20 text-white text-6xl font-bold flex items-center justify-center"
+                  />
                 </div>
               )}
             </div>
           </div>
         </div>
-      </section>
+        </section>
+      ) : null}
 
       {/* Services */}
       <section id="services" className="mx-auto max-w-6xl px-4 py-14 bg-white/50">
@@ -451,7 +464,8 @@ function PharmacyTemplate1PageContent() {
       </section>
 
       {/* Products */}
-      <section id="products" className="bg-gradient-to-b from-white via-neutral-light/30 to-white border-y border-neutral-border">
+      {showFeaturedProducts ? (
+        <section id="products" className="bg-gradient-to-b from-white via-neutral-light/30 to-white border-y border-neutral-border">
         <div className="mx-auto max-w-6xl px-4 py-16">
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-12">
             <div>
@@ -461,7 +475,7 @@ function PharmacyTemplate1PageContent() {
               <p className="mt-3 text-neutral-gray max-w-2xl text-lg">
                 Shop our most popular medications and wellness products. Add to cart directly or browse our full catalog.
               </p>
-              {categoryChips.length > 0 && (
+              {showCategories && categoryChips.length > 0 && (
                 <div className="mt-5 flex flex-wrap gap-2">
                   {categoryChips.map((category) => (
                     <Link
@@ -490,6 +504,15 @@ function PharmacyTemplate1PageContent() {
                   
                   return (
                     <div key={product.id} className="group rounded-2xl bg-white border-2 border-neutral-border p-6 hover:border-primary/50 hover:shadow-xl transition-all">
+                      <div className="mb-4 h-40 overflow-hidden rounded-xl bg-neutral-light/60">
+                        <ProductImage
+                          src={product.imageUrl}
+                          alt={product.name}
+                          className="h-full w-full object-cover"
+                          fallbackClassName="grid h-full w-full place-items-center bg-neutral-light/60 text-neutral-gray"
+                          fallbackLabel={product.category || 'No product image'}
+                        />
+                      </div>
                       <div className="flex items-start justify-between gap-3 mb-4">
                         <div className="flex-1">
                           <div className="text-xs font-semibold text-primary uppercase tracking-wide">{product.category || 'General'}</div>
@@ -549,9 +572,11 @@ function PharmacyTemplate1PageContent() {
             </>
           )}
         </div>
-      </section>
+        </section>
+      ) : null}
 
-      <section className="mx-auto max-w-6xl px-4 py-8">
+      {showOffers ? (
+        <section className="mx-auto max-w-6xl px-4 py-8">
         <div className="rounded-2xl border border-primary/25 bg-gradient-to-r from-primary-light/35 via-white to-primary-light/20 p-6 sm:p-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
             <div className="md:col-span-2">
@@ -583,10 +608,12 @@ function PharmacyTemplate1PageContent() {
             </div>
           </div>
         </div>
-      </section>
+        </section>
+      ) : null}
 
       {/* Contact */}
-      <section id="contact" className="mx-auto max-w-6xl px-4 py-16 bg-gradient-to-b from-white to-neutral-light/30">
+      {showContactInfo ? (
+        <section id="contact" className="mx-auto max-w-6xl px-4 py-16 bg-gradient-to-b from-white to-neutral-light/30">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="rounded-2xl border border-neutral-border p-6">
             <h2 className="text-2xl font-bold text-neutral-dark">Contact & refills</h2>
@@ -615,20 +642,29 @@ function PharmacyTemplate1PageContent() {
 
           <div className="rounded-2xl border border-neutral-border p-6">
             <h3 className="font-semibold text-neutral-dark">Quick message</h3>
-            <p className="mt-1 text-sm text-neutral-gray">Demo form (no backend yet)</p>
-            <form className="mt-4 space-y-3" onSubmit={(e) => e.preventDefault()}>
+            <p className="mt-1 text-sm text-neutral-gray">Send refill questions directly to the pharmacy owner dashboard.</p>
+            <form className="mt-4 space-y-3" onSubmit={handleQuickMessageSubmit}>
               <input
                 className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                 placeholder="Full name"
+                value={quickMessage.name}
+                onChange={(event) => setQuickMessage((prev) => ({ ...prev, name: event.target.value }))}
+                required
               />
               <input
                 className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                 placeholder="Phone or email"
+                value={quickMessage.contact}
+                onChange={(event) => setQuickMessage((prev) => ({ ...prev, contact: event.target.value }))}
+                required
               />
               <textarea
                 className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                 rows={5}
                 placeholder="Message / Refill request details..."
+                value={quickMessage.message}
+                onChange={(event) => setQuickMessage((prev) => ({ ...prev, message: event.target.value }))}
+                required
               />
               <button
                 className="w-full px-6 py-3 rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors"
@@ -636,10 +672,14 @@ function PharmacyTemplate1PageContent() {
               >
                 Send
               </button>
+              {quickMessageSent ? (
+                <p className="text-sm text-success">Message sent to pharmacy owner inbox.</p>
+              ) : null}
             </form>
           </div>
         </div>
-      </section>
+        </section>
+      ) : null}
 
       <footer className="border-t border-neutral-border bg-gradient-to-b from-white to-neutral-light/30">
         <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-neutral-gray flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">

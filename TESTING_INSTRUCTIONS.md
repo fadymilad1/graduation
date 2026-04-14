@@ -69,13 +69,17 @@ print(f"Persisted Data: {response.json()}")
 Create a file named `test_products.csv`:
 
 ```csv
-name,category,description,price,stock
-Aspirin 500mg,Pain Relief,Fast pain relief,5.99,100
-Vitamin C 1000mg,Vitamins,Immune system support,12.99,50
-Ibuprofen 200mg,Pain Relief,Anti-inflammatory,8.49,75
-Multivitamin,Vitamins,Daily nutrition,15.99,60
-Hand Sanitizer,Hygiene,Antibacterial gel,3.99,200
+name,category,description,price,stock,image_url
+Aspirin 500mg,Pain Relief,Fast pain relief,5.99,100,https://placehold.co/600x400/png?text=Aspirin
+Vitamin C 1000mg,Vitamins,Immune system support,12.99,50,
+Ibuprofen 200mg,Pain Relief,Anti-inflammatory,8.49,75,https://placehold.co/600x400/png?text=Ibuprofen
+Multivitamin,Vitamins,Daily nutrition,15.99,60,https://placehold.co/600x400/png?text=Multivitamin
+Hand Sanitizer,Hygiene,Antibacterial gel,3.99,200,invalid-url
 ```
+
+Notes:
+- CSV image header can be `image_url`, `Image`, or `Image Link`.
+- Invalid image URLs are ignored; valid rows still import.
 
 #### Using Browser
 
@@ -86,6 +90,7 @@ Hand Sanitizer,Hygiene,Antibacterial gel,3.99,200
 5. ✅ Verify products appear in the list below
 6. Navigate to your template (e.g., `/templates/pharmacy/3/medications`)
 7. ✅ Verify products are visible in the template
+8. ✅ Verify products with valid image URLs show images; invalid/missing image URLs show fallback UI
 
 #### Using API (Python)
 
@@ -105,6 +110,7 @@ products = [
         'name': 'Test Product 1',
         'category': 'Test Category',
         'description': 'Test description',
+        'image_url': 'https://placehold.co/600x400/png?text=Test+Product+1',
         'price': 10.99,
         'stock': 50
     },
@@ -112,6 +118,7 @@ products = [
         'name': 'Test Product 2',
         'category': 'Test Category',
         'description': 'Another test',
+        'image_url': 'invalid-url',
         'price': 15.99,
         'stock': 30
     }
@@ -144,7 +151,8 @@ print(f"Products in page: {len(data.get('results', []))}")
 4. Click on "Products" or "Medications" link
 5. ✅ Verify your imported products are displayed
 6. ✅ Check product details (name, price, category)
-7. ✅ Test "Add to Cart" functionality
+7. ✅ Verify image behavior (valid URLs render, invalid/missing URLs fallback)
+8. ✅ Test "Add to Cart" functionality
 
 ### Test 4: End-to-End Flow
 

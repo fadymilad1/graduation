@@ -29,10 +29,10 @@ Medify is a full-stack application (Next.js frontend + Django REST API backend) 
 ## Features
 
 - **Landing Page** - Marketing page with features, pricing, and testimonials
-- **User Authentication** - Login and signup pages
+- **User Authentication** - Signup, login, logout, forgot password, password reset, and account deletion
 - **Dashboard** - Comprehensive dashboard with setup progress tracking
 - **Hospital Setup** - Feature selection and configuration for hospitals
-- **Pharmacy Setup** - Template selection and customization for pharmacies
+- **Pharmacy Setup** - Purchase, activation, cancellation, and customization for pharmacy templates
 - **Business Info Forms** - Collect and manage business information
 - **AI Assistant** - Chat interface for website management assistance
 - **Settings** - Account and website configuration
@@ -74,7 +74,8 @@ venv\Scripts\activate           # Windows
 pip install -r requirements.txt
 
 # copy environment template and adjust if needed
-cp .env.example .env            # or create .env manually based on .env.example
+copy .env.example .env          # Windows
+# cp .env.example .env          # Mac/Linux
 
 # apply migrations
 python manage.py migrate
@@ -98,13 +99,65 @@ The frontend will be available at `http://localhost:3000`.
 ### 3. Environment Variables
 
 - **Backend**: Configure `backend/.env` (see `.env.example`) for `SECRET_KEY`, `DEBUG`, database settings (`DB_ENGINE`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`), and `FRONTEND_URL`.
-- **Frontend**: Uses mock/local data by default. When wiring the UI to the API, you can add an API base URL via Next.js env vars (for example: `NEXT_PUBLIC_API_URL=http://localhost:8000/api`).
+- **Frontend**: Set the API base URL via Next.js env vars (for example: `NEXT_PUBLIC_API_URL=http://localhost:8000/api`).
+
+## Authentication Flows (Implemented)
+
+The authentication system now includes full account lifecycle flows in both backend and frontend.
+
+- `POST /api/auth/logout/`
+    - Revokes refresh tokens via JWT blacklist.
+    - Payload supports:
+        - `refresh` (single-session logout)
+        - `all_devices` (logout from all sessions)
+- `POST /api/auth/delete-account/`
+    - Requires authenticated user plus explicit confirmation:
+        - account email
+        - current password
+        - `confirmation_text: "DELETE"`
+    - Permanently removes the account and related data.
+- `POST /api/auth/forgot-password/`
+    - Sends password reset email with secure Django token.
+    - Uses non-enumerating response text for security.
+- `POST /api/auth/password-reset/validate/`
+    - Validates `uid` and `token` before showing reset form.
+- `POST /api/auth/password-reset/confirm/`
+    - Sets new password after token validation.
+    - Revokes existing refresh tokens for the user.
+
+### Backend Auth Environment Variables
+
+Add these to `backend/.env` for production-ready password reset email flow:
+
+- `DEFAULT_FROM_EMAIL`
+- `EMAIL_BACKEND`
+- `EMAIL_HOST`
+- `EMAIL_PORT`
+- `EMAIL_HOST_USER`
+- `EMAIL_HOST_PASSWORD`
+- `EMAIL_USE_TLS`
+- `EMAIL_USE_SSL`
+- `FRONTEND_PASSWORD_RESET_PATH` (default: `/reset-password`)
+- `PASSWORD_RESET_TIMEOUT` (seconds; default: `3600`)
+
+Notes:
+
+- Ensure migrations are applied (`python manage.py migrate`) so `token_blacklist` tables exist.
+- Frontend reset pages are available at `/forgot-password` and `/reset-password`.
 
 ## Project Status
 
-- **Frontend**: Uses local/mock data for now. All flows and components are ready to be connected to real backend endpoints.
-- **Backend**: Django REST API implemented for authentication, website setup, and business info, with JWT authentication and CORS configured for the Next.js frontend.
-- **Persistence**: SQLite is used by default for local development. PostgreSQL configuration is ready for production or more advanced setups (see backend docs).
+- **Frontend**: Integrated with backend APIs for auth, pharmacy profile, product catalog, and template purchase lifecycle.
+- **Backend**: Django REST API implemented for authentication, website setup, business info, pharmacy products, and template purchase/cancel persistence.
+- **Persistence**: SQLite is used by default for local development; PostgreSQL configuration is available for production (see backend docs).
+
+## Pharmacy Template Workflow
+
+- Pharmacy templates are available under `/templates/pharmacy/1` through `/templates/pharmacy/6`.
+- Template purchases are persisted in backend records and surfaced in `/dashboard/pharmacy/templates`.
+- Activation requires an active purchase.
+- Cancellation marks purchase history as cancelled and clears active selection when applicable.
+- Preview/publish flows use backend state with local/public mirrors to keep owner and visitor pages in sync.
 
 ## Documentation
 

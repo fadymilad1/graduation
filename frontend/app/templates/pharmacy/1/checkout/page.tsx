@@ -6,8 +6,10 @@ import React, { useEffect, useMemo, useState, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { FiClock, FiMapPin, FiPhoneCall, FiShoppingCart, FiCheckCircle, FiArrowLeft } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
+import { BrandLogo } from '@/components/pharmacy/BrandLogo'
 import { useSearchParams } from 'next/navigation'
-import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, getSiteOwnerId, getPrefixForUserId, getItemForUser, setItemForUser } from '@/lib/storage'
+import { submitTemplateOrder } from '@/lib/pharmacyTemplateRuntime'
+import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, getSiteOwnerId, getPrefixForUserId, getItemForUser, setItemForUser, setSiteOwnerId } from '@/lib/storage'
 
 type Product = {
   id: string
@@ -68,13 +70,23 @@ function CheckoutPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isDemo = searchParams?.get('demo') === '1' || searchParams?.get('demo') === 'true'
+  const ownerId = searchParams?.get('owner') || ''
   const cartKey = isDemo ? 'pharmacy_cart_demo' : 'pharmacy_cart'
   const withDemo = (path: string) => {
-    if (!isDemo) return path
     const [base, hash] = path.split('#')
-    const sep = base.includes('?') ? '&' : '?'
-    return `${base}${sep}demo=1${hash ? `#${hash}` : ''}`
+    const [pathname, query = ''] = base.split('?')
+    const params = new URLSearchParams(query)
+    if (isDemo) params.set('demo', '1')
+    if (ownerId) params.set('owner', ownerId)
+    const nextQuery = params.toString()
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash ? `#${hash}` : ''}`
   }
+
+  useEffect(() => {
+    if (ownerId) {
+      setSiteOwnerId(ownerId)
+    }
+  }, [ownerId])
 
   const [cart, setCart] = useState<CartItem[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -106,6 +118,7 @@ function CheckoutPageContent() {
     expiry: '',
     cvc: '',
   })
+  const [paymentError, setPaymentError] = useState('')
 
   const digitsOnly = (value: string) => value.replace(/\D+/g, '')
 
@@ -140,10 +153,9 @@ function CheckoutPageContent() {
     if (savedCart && savedCart.length > 0) {
       setCart(savedCart)
     } else {
-      const redirectPath = isDemo ? '/templates/pharmacy/1/medications?demo=1' : '/templates/pharmacy/1/medications'
-      router.push(redirectPath)
+      router.push(withDemo('/templates/pharmacy/1/medications'))
     }
-  }, [router, cartKey, isDemo])
+  }, [router, cartKey, isDemo, ownerId])
 
   const subtotal = useMemo(() => {
     return cart.reduce((sum, item) => {
@@ -176,8 +188,7 @@ function CheckoutPageContent() {
       } else {
         if (isDemo) localStorage.removeItem(cartKey)
         else removeSiteItem(cartKey)
-        const redirectPath = isDemo ? '/templates/pharmacy/1/medications?demo=1' : '/templates/pharmacy/1/medications'
-        setTimeout(() => router.push(redirectPath), 0)
+        setTimeout(() => router.push(withDemo('/templates/pharmacy/1/medications')), 0)
       }
       return updated
     })
@@ -192,8 +203,7 @@ function CheckoutPageContent() {
       } else {
         if (isDemo) localStorage.removeItem(cartKey)
         else removeSiteItem(cartKey)
-        const redirectPath = isDemo ? '/templates/pharmacy/1/medications?demo=1' : '/templates/pharmacy/1/medications'
-        setTimeout(() => router.push(redirectPath), 0)
+        setTimeout(() => router.push(withDemo('/templates/pharmacy/1/medications')), 0)
       }
       return updated
     })
@@ -201,6 +211,7 @@ function CheckoutPageContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setPaymentError('')
 
     // Basic card validation (UI-only; no real payment processing here)
     if (formData.paymentMethod === 'card') {
@@ -218,79 +229,42 @@ function CheckoutPageContent() {
       const isNameValid = cardInfo.cardholderName.trim().length >= 2
 
       if (!isNameValid || !isCardNumberValid || !isExpiryValid || !isCvcValid) {
-        alert('Please enter valid card details (name, card number, expiry MM/YY, and CVC).')
+        setPaymentError('Please enter valid card details (name, card number, expiry MM/YY, and CVC).')
         return
       }
     }
 
     setIsSubmitting(true)
 
-    // Simulate order processing
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    try {
+      const result = await submitTemplateOrder({
+        isDemo,
+        orderNamespace: 'pharmacy_order',
+        cart: cart.map((item) => ({
+          ...item,
+          product: { ...item.product, stock: undefined },
+        })),
+        total,
+        deliveryFee,
+        deliveryInfo: formData,
+        payment: formData.paymentMethod === 'card'
+          ? { method: 'card', last4: digitsOnly(cardInfo.cardNumber).slice(-4) }
+          : { method: 'cash' },
+      })
 
-    // Generate order number
-    const orderNum = `ORD-${Date.now().toString().slice(-8)}`
-    setOrderNumber(orderNum)
+      setOrderNumber(result.orderNumber)
 
-    // Save order to localStorage (for demo)
-    const order = {
-      orderNumber: orderNum,
-      items: cart,
-      deliveryInfo: formData,
-      payment: formData.paymentMethod === 'card'
-        ? { method: 'card', last4: digitsOnly(cardInfo.cardNumber).slice(-4) }
-        : { method: 'cash' },
-      total,
-      placedAt: new Date().toISOString(),
+      if (isDemo) localStorage.removeItem(cartKey)
+      else removeSiteItem(cartKey)
+      setCart([])
+
+      setOrderPlaced(true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not place order. Please try again.'
+      setPaymentError(message)
+    } finally {
+      setIsSubmitting(false)
     }
-    const ownerId = !isDemo ? (getStoredUser()?.id ?? getSiteOwnerId()) : null
-    if (ownerId) {
-      const prefix = getPrefixForUserId(ownerId)
-      localStorage.setItem(`${prefix}pharmacy_order_${orderNum}`, JSON.stringify(order))
-      try {
-        const listRaw = getItemForUser(ownerId, 'pharmacyOrders')
-        const list = JSON.parse(listRaw || '[]')
-        list.push({
-          id: orderNum,
-          customerName: formData.fullName?.trim() || 'Customer',
-          customerEmail: formData.email?.trim(),
-          total,
-          status: 'pending',
-          createdAt: order.placedAt,
-          items: cart.map((i) => `${i.product.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`),
-        })
-        setItemForUser(ownerId, 'pharmacyOrders', JSON.stringify(list))
-      } catch {
-        // ignore
-      }
-    } else if (!isDemo) {
-      localStorage.setItem(`pharmacy_order_${orderNum}`, JSON.stringify(order))
-      try {
-        const list = JSON.parse(localStorage.getItem('pharmacyOrders') || '[]')
-        list.push({
-          id: orderNum,
-          customerName: formData.fullName?.trim() || 'Customer',
-          customerEmail: formData.email?.trim(),
-          total,
-          status: 'pending',
-          createdAt: order.placedAt,
-          items: cart.map((i) => `${i.product.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`),
-        })
-        localStorage.setItem('pharmacyOrders', JSON.stringify(list))
-      } catch {
-        // ignore
-      }
-    } else {
-      localStorage.setItem(`pharmacy_order_${orderNum}`, JSON.stringify(order))
-    }
-
-    // Clear cart
-    if (isDemo) localStorage.removeItem(cartKey)
-    else removeSiteItem(cartKey)
-    setCart([])
-
-    setOrderPlaced(true)
-    setIsSubmitting(false)
   }
 
 
@@ -366,16 +340,14 @@ function CheckoutPageContent() {
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center overflow-hidden shadow-lg group-hover:scale-105 transition-transform">
               {isDemo ? (
                 <Image src="/mod logo.png" alt="Logo" width={48} height={48} className="object-cover" />
-              ) : brand.logo ? (
-                brand.logo.startsWith('data:') ? (
-                  <img src={brand.logo} alt={`${brand.name} logo`} className="w-full h-full object-cover" />
-                ) : (
-                  <Image src={brand.logo} alt={`${brand.name} logo`} width={48} height={48} className="object-cover" />
-                )
               ) : (
-                <div className="w-full h-full bg-primary-dark flex items-center justify-center text-white font-bold">
-                  {brand.name.charAt(0).toUpperCase() || 'P'}
-                </div>
+                <BrandLogo
+                  src={brand.logo}
+                  alt={`${brand.name || 'Pharmacy'} logo`}
+                  fallbackText={brand.name || 'P'}
+                  imageClassName="w-full h-full object-cover"
+                  fallbackClassName="w-full h-full bg-primary-dark flex items-center justify-center text-white font-bold"
+                />
               )}
             </div>
             <div className="leading-tight">
@@ -542,7 +514,10 @@ function CheckoutPageContent() {
                   <div className="grid grid-cols-2 gap-4">
                     <button
                       type="button"
-                      onClick={() => setFormData({ ...formData, paymentMethod: 'cash' })}
+                      onClick={() => {
+                        setPaymentError('')
+                        setFormData({ ...formData, paymentMethod: 'cash' })
+                      }}
                       className={`p-4 rounded-lg border-2 transition-colors ${
                         formData.paymentMethod === 'cash'
                           ? 'border-primary bg-primary-light'
@@ -553,7 +528,10 @@ function CheckoutPageContent() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setFormData({ ...formData, paymentMethod: 'card' })}
+                      onClick={() => {
+                        setPaymentError('')
+                        setFormData({ ...formData, paymentMethod: 'card' })
+                      }}
                       className={`p-4 rounded-lg border-2 transition-colors ${
                         formData.paymentMethod === 'card'
                           ? 'border-primary bg-primary-light'
@@ -583,7 +561,10 @@ function CheckoutPageContent() {
                           type="text"
                           required
                           value={cardInfo.cardholderName}
-                          onChange={(e) => setCardInfo({ ...cardInfo, cardholderName: e.target.value })}
+                          onChange={(e) => {
+                            setPaymentError('')
+                            setCardInfo({ ...cardInfo, cardholderName: e.target.value })
+                          }}
                           className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                           placeholder="Name on card"
                           autoComplete="cc-name"
@@ -599,7 +580,10 @@ function CheckoutPageContent() {
                           inputMode="numeric"
                           required
                           value={cardInfo.cardNumber}
-                          onChange={(e) => setCardInfo({ ...cardInfo, cardNumber: formatCardNumber(e.target.value) })}
+                          onChange={(e) => {
+                            setPaymentError('')
+                            setCardInfo({ ...cardInfo, cardNumber: formatCardNumber(e.target.value) })
+                          }}
                           className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                           placeholder="1234 5678 9012 3456"
                           autoComplete="cc-number"
@@ -615,7 +599,10 @@ function CheckoutPageContent() {
                           inputMode="numeric"
                           required
                           value={cardInfo.expiry}
-                          onChange={(e) => setCardInfo({ ...cardInfo, expiry: formatExpiry(e.target.value) })}
+                          onChange={(e) => {
+                            setPaymentError('')
+                            setCardInfo({ ...cardInfo, expiry: formatExpiry(e.target.value) })
+                          }}
                           className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                           placeholder="MM/YY"
                           autoComplete="cc-exp"
@@ -631,13 +618,19 @@ function CheckoutPageContent() {
                           inputMode="numeric"
                           required
                           value={cardInfo.cvc}
-                          onChange={(e) => setCardInfo({ ...cardInfo, cvc: formatCvc(e.target.value) })}
+                          onChange={(e) => {
+                            setPaymentError('')
+                            setCardInfo({ ...cardInfo, cvc: formatCvc(e.target.value) })
+                          }}
                           className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                           placeholder="123"
                           autoComplete="cc-csc"
                         />
                       </div>
                     </div>
+                    {paymentError ? (
+                      <p className="mt-3 text-sm text-error">{paymentError}</p>
+                    ) : null}
                   </div>
                 )}
 

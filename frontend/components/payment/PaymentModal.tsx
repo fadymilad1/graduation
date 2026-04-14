@@ -5,12 +5,17 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { FiCreditCard, FiCheck } from 'react-icons/fi'
 
+export type PaymentSuccessPayload = {
+  payment_method: 'visa' | 'fawry'
+  transaction_reference: string
+}
+
 interface PaymentModalProps {
   isOpen: boolean
   onClose: () => void
   amount: number
   description: string
-  onPaymentSuccess: () => void
+  onPaymentSuccess: (payload: PaymentSuccessPayload) => void
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({
@@ -79,12 +84,21 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     if (!selectedMethod) return
     if (!canPay) return
 
+    const transactionSeed =
+      selectedMethod === 'visa'
+        ? digitsOnly(visaInfo.cardNumber).slice(-4)
+        : digitsOnly(fawryInfo.phone).slice(-4)
+    const transactionReference = `${selectedMethod}-${Date.now()}-${transactionSeed || '0000'}`
+
     setIsProcessing(true)
 
     // Simulate payment processing
     setTimeout(() => {
       setIsProcessing(false)
-      onPaymentSuccess()
+      onPaymentSuccess({
+        payment_method: selectedMethod,
+        transaction_reference: transactionReference,
+      })
       onClose()
     }, 2000)
   }

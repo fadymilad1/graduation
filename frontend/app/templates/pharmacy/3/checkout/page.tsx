@@ -4,7 +4,8 @@ import Link from 'next/link'
 import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { FiArrowLeft, FiCheckCircle, FiShoppingCart } from 'react-icons/fi'
-import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, getSiteOwnerId, getPrefixForUserId, getItemForUser, setItemForUser } from '@/lib/storage'
+import { submitTemplateOrder } from '@/lib/pharmacyTemplateRuntime'
+import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, getSiteOwnerId, getPrefixForUserId, getItemForUser, setItemForUser, setSiteOwnerId } from '@/lib/storage'
 
 type Product = {
   id: string
@@ -53,14 +54,24 @@ function Template3CheckoutContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isDemo = searchParams?.get('demo') === '1' || searchParams?.get('demo') === 'true'
+  const ownerId = searchParams?.get('owner') || ''
   const cartKey = isDemo ? 'pharmacy3_cart_demo' : 'pharmacy3_cart'
 
   const withDemo = (path: string) => {
-    if (!isDemo) return path
     const [base, hash] = path.split('#')
-    const sep = base.includes('?') ? '&' : '?'
-    return `${base}${sep}demo=1${hash ? `#${hash}` : ''}`
+    const [pathname, query = ''] = base.split('?')
+    const params = new URLSearchParams(query)
+    if (isDemo) params.set('demo', '1')
+    if (ownerId) params.set('owner', ownerId)
+    const nextQuery = params.toString()
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash ? `#${hash}` : ''}`
   }
+
+  useEffect(() => {
+    if (ownerId) {
+      setSiteOwnerId(ownerId)
+    }
+  }, [ownerId])
 
   const [cart, setCart] = useState<CartItem[]>([])
   const [cartLoaded, setCartLoaded] = useState(false)
@@ -87,6 +98,7 @@ function Template3CheckoutContent() {
     expiry: '',
     cvc: '',
   })
+  const [paymentError, setPaymentError] = useState('')
 
   const digitsOnly = (value: string) => value.replace(/\D+/g, '')
   const formatCardNumber = (value: string) => {
@@ -142,10 +154,7 @@ function Template3CheckoutContent() {
             )
 
       if (updated.length === 0) {
-        const redirectPath = isDemo
-          ? '/templates/pharmacy/3/medications?demo=1'
-          : '/templates/pharmacy/3/medications'
-        setTimeout(() => router.push(redirectPath), 0)
+        setTimeout(() => router.push(withDemo('/templates/pharmacy/3/medications')), 0)
       }
       return updated
     })
@@ -153,6 +162,7 @@ function Template3CheckoutContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setPaymentError('')
 
     if (formData.paymentMethod === 'card') {
       const cardNumberDigits = digitsOnly(cardInfo.cardNumber)
@@ -169,74 +179,39 @@ function Template3CheckoutContent() {
       const isNameValid = cardInfo.cardholderName.trim().length >= 2
 
       if (!isNameValid || !isCardNumberValid || !isExpiryValid || !isCvcValid) {
-        alert('Please enter valid card details (name, card number, expiry MM/YY, and CVC).')
+        setPaymentError('Please enter valid card details (name, card number, expiry MM/YY, and CVC).')
         return
       }
     }
 
     setIsSubmitting(true)
-    await new Promise((resolve) => setTimeout(resolve, 1200))
 
-    const orderNum = `ORD3-${Date.now().toString().slice(-8)}`
-    setOrderNumber(orderNum)
+    try {
+      const result = await submitTemplateOrder({
+        isDemo,
+        orderNamespace: 'pharmacy3_order',
+        cart,
+        total,
+        deliveryFee: 0,
+        deliveryInfo: formData,
+        payment:
+          formData.paymentMethod === 'card'
+            ? { method: 'card', last4: digitsOnly(cardInfo.cardNumber).slice(-4) }
+            : { method: 'cash' },
+      })
 
-    const order = {
-      orderNumber: orderNum,
-      items: cart,
-      deliveryInfo: formData,
-      payment:
-        formData.paymentMethod === 'card'
-          ? { method: 'card', last4: digitsOnly(cardInfo.cardNumber).slice(-4) }
-          : { method: 'cash' },
-      total,
-      placedAt: new Date().toISOString(),
+      setOrderNumber(result.orderNumber)
+
+      if (isDemo) localStorage.removeItem(cartKey)
+      else removeSiteItem(cartKey)
+      setCart([])
+      setOrderPlaced(true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not place order. Please try again.'
+      setPaymentError(message)
+    } finally {
+      setIsSubmitting(false)
     }
-    const ownerId = !isDemo ? (getStoredUser()?.id ?? getSiteOwnerId()) : null
-    if (ownerId) {
-      const prefix = getPrefixForUserId(ownerId)
-      localStorage.setItem(`${prefix}pharmacy3_order_${orderNum}`, JSON.stringify(order))
-      try {
-        const listRaw = getItemForUser(ownerId, 'pharmacyOrders')
-        const list = JSON.parse(listRaw || '[]')
-        list.push({
-          id: orderNum,
-          customerName: formData.fullName?.trim() || 'Customer',
-          customerEmail: formData.email?.trim(),
-          total,
-          status: 'pending',
-          createdAt: order.placedAt,
-          items: cart.map((i) => `${i.product.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`),
-        })
-        setItemForUser(ownerId, 'pharmacyOrders', JSON.stringify(list))
-      } catch {
-        // ignore
-      }
-    } else if (!isDemo) {
-      localStorage.setItem(`pharmacy3_order_${orderNum}`, JSON.stringify(order))
-      try {
-        const list = JSON.parse(localStorage.getItem('pharmacyOrders') || '[]')
-        list.push({
-          id: orderNum,
-          customerName: formData.fullName?.trim() || 'Customer',
-          customerEmail: formData.email?.trim(),
-          total,
-          status: 'pending',
-          createdAt: order.placedAt,
-          items: cart.map((i) => `${i.product.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`),
-        })
-        localStorage.setItem('pharmacyOrders', JSON.stringify(list))
-      } catch {
-        // ignore
-      }
-    } else {
-      localStorage.setItem(`pharmacy3_order_${orderNum}`, JSON.stringify(order))
-    }
-
-    if (isDemo) localStorage.removeItem(cartKey)
-    else removeSiteItem(cartKey)
-    setCart([])
-    setOrderPlaced(true)
-    setIsSubmitting(false)
   }
 
   if (!cartLoaded) {
@@ -260,13 +235,13 @@ function Template3CheckoutContent() {
           </p>
           <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
             <Link
-              href={isDemo ? '/templates/pharmacy/3/medications?demo=1' : '/templates/pharmacy/3/medications'}
+              href={withDemo('/templates/pharmacy/3/medications')}
               className="px-6 py-3 rounded-full bg-neutral-dark text-white hover:bg-black transition-colors text-sm font-medium"
             >
               Browse Products
             </Link>
             <Link
-              href={isDemo ? '/templates/pharmacy/3?demo=1' : '/templates/pharmacy/3'}
+              href={withDemo('/templates/pharmacy/3')}
               className="px-6 py-3 rounded-full border border-neutral-border text-neutral-dark hover:bg-neutral-light transition-colors text-sm font-medium"
             >
               Back to Home
@@ -466,7 +441,10 @@ function Template3CheckoutContent() {
                 <div className="grid grid-cols-2 gap-3 mt-1">
                   <button
                     type="button"
-                    onClick={() => setFormData({ ...formData, paymentMethod: 'cash' })}
+                    onClick={() => {
+                      setPaymentError('')
+                      setFormData({ ...formData, paymentMethod: 'cash' })
+                    }}
                     className={`p-3 rounded-md border text-sm text-left transition-colors ${
                       formData.paymentMethod === 'cash'
                         ? 'border-primary bg-primary-light/30'
@@ -477,7 +455,10 @@ function Template3CheckoutContent() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setFormData({ ...formData, paymentMethod: 'card' })}
+                    onClick={() => {
+                      setPaymentError('')
+                      setFormData({ ...formData, paymentMethod: 'card' })
+                    }}
                     className={`p-3 rounded-md border text-sm text-left transition-colors ${
                       formData.paymentMethod === 'card'
                         ? 'border-primary bg-primary-light/30'
@@ -502,9 +483,10 @@ function Template3CheckoutContent() {
                           type="text"
                           required
                           value={cardInfo.cardholderName}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            setPaymentError('')
                             setCardInfo({ ...cardInfo, cardholderName: e.target.value })
-                          }
+                          }}
                           className="w-full px-3 py-2 border border-neutral-border rounded-md text-sm focus:ring-2 focus:ring-primary focus:border-transparent"
                           placeholder="Name on card"
                           autoComplete="cc-name"
@@ -519,9 +501,10 @@ function Template3CheckoutContent() {
                           inputMode="numeric"
                           required
                           value={cardInfo.cardNumber}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            setPaymentError('')
                             setCardInfo({ ...cardInfo, cardNumber: formatCardNumber(e.target.value) })
-                          }
+                          }}
                           className="w-full px-3 py-2 border border-neutral-border rounded-md text-sm focus:ring-2 focus:ring-primary focus:border-transparent"
                           placeholder="1234 5678 9012 3456"
                           autoComplete="cc-number"
@@ -537,9 +520,10 @@ function Template3CheckoutContent() {
                             inputMode="numeric"
                             required
                             value={cardInfo.expiry}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              setPaymentError('')
                               setCardInfo({ ...cardInfo, expiry: formatExpiry(e.target.value) })
-                            }
+                            }}
                             className="w-full px-3 py-2 border border-neutral-border rounded-md text-sm focus:ring-2 focus:ring-primary focus:border-transparent"
                             placeholder="MM/YY"
                             autoComplete="cc-exp"
@@ -554,9 +538,10 @@ function Template3CheckoutContent() {
                             inputMode="numeric"
                             required
                             value={cardInfo.cvc}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              setPaymentError('')
                               setCardInfo({ ...cardInfo, cvc: formatCvc(e.target.value) })
-                            }
+                            }}
                             className="w-full px-3 py-2 border border-neutral-border rounded-md text-sm focus:ring-2 focus:ring-primary focus:border-transparent"
                             placeholder="123"
                             autoComplete="cc-csc"
@@ -564,6 +549,7 @@ function Template3CheckoutContent() {
                         </div>
                       </div>
                     </div>
+                    {paymentError ? <p className="text-sm text-error">{paymentError}</p> : null}
                   </div>
                 )}
               </div>

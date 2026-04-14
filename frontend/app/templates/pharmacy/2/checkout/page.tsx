@@ -6,7 +6,9 @@ import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { FiArrowLeft, FiCheckCircle, FiClock, FiMapPin, FiPhoneCall, FiShoppingCart } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
-import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, getSiteOwnerId, getPrefixForUserId, getItemForUser, setItemForUser } from '@/lib/storage'
+import { BrandLogo } from '@/components/pharmacy/BrandLogo'
+import { submitTemplateOrder } from '@/lib/pharmacyTemplateRuntime'
+import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, getSiteOwnerId, getPrefixForUserId, getItemForUser, setItemForUser, setSiteOwnerId } from '@/lib/storage'
 
 type Product = {
   id: string
@@ -67,14 +69,24 @@ function Template2CheckoutContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isDemo = searchParams?.get('demo') === '1' || searchParams?.get('demo') === 'true'
+  const ownerId = searchParams?.get('owner') || ''
   const cartKey = isDemo ? 'pharmacy2_cart_demo' : 'pharmacy2_cart'
 
   const withDemo = (path: string) => {
-    if (!isDemo) return path
     const [base, hash] = path.split('#')
-    const sep = base.includes('?') ? '&' : '?'
-    return `${base}${sep}demo=1${hash ? `#${hash}` : ''}`
+    const [pathname, query = ''] = base.split('?')
+    const params = new URLSearchParams(query)
+    if (isDemo) params.set('demo', '1')
+    if (ownerId) params.set('owner', ownerId)
+    const nextQuery = params.toString()
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash ? `#${hash}` : ''}`
   }
+
+  useEffect(() => {
+    if (ownerId) {
+      setSiteOwnerId(ownerId)
+    }
+  }, [ownerId])
 
   const [cart, setCart] = useState<CartItem[]>([])
   const [cartLoaded, setCartLoaded] = useState(false)
@@ -108,6 +120,7 @@ function Template2CheckoutContent() {
     expiry: '',
     cvc: '',
   })
+  const [paymentError, setPaymentError] = useState('')
 
   const digitsOnly = (value: string) => value.replace(/\D+/g, '')
   const formatCardNumber = (value: string) => {
@@ -174,8 +187,7 @@ function Template2CheckoutContent() {
           : prev.map((i) => (i.product.id === productId ? { ...i, quantity: newQuantity } : i))
 
       if (updated.length === 0) {
-        const redirectPath = isDemo ? '/templates/pharmacy/2/medications?demo=1' : '/templates/pharmacy/2/medications'
-        setTimeout(() => router.push(redirectPath), 0)
+        setTimeout(() => router.push(withDemo('/templates/pharmacy/2/medications')), 0)
       }
       return updated
     })
@@ -185,8 +197,7 @@ function Template2CheckoutContent() {
     setCart((prev) => {
       const updated = prev.filter((i) => i.product.id !== productId)
       if (updated.length === 0) {
-        const redirectPath = isDemo ? '/templates/pharmacy/2/medications?demo=1' : '/templates/pharmacy/2/medications'
-        setTimeout(() => router.push(redirectPath), 0)
+        setTimeout(() => router.push(withDemo('/templates/pharmacy/2/medications')), 0)
       }
       return updated
     })
@@ -194,6 +205,7 @@ function Template2CheckoutContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setPaymentError('')
 
     if (formData.paymentMethod === 'card') {
       const cardNumberDigits = digitsOnly(cardInfo.cardNumber)
@@ -210,74 +222,39 @@ function Template2CheckoutContent() {
       const isNameValid = cardInfo.cardholderName.trim().length >= 2
 
       if (!isNameValid || !isCardNumberValid || !isExpiryValid || !isCvcValid) {
-        alert('Please enter valid card details (name, card number, expiry MM/YY, and CVC).')
+        setPaymentError('Please enter valid card details (name, card number, expiry MM/YY, and CVC).')
         return
       }
     }
 
     setIsSubmitting(true)
-    await new Promise((resolve) => setTimeout(resolve, 1500))
 
-    const orderNum = `ORD2-${Date.now().toString().slice(-8)}`
-    setOrderNumber(orderNum)
+    try {
+      const result = await submitTemplateOrder({
+        isDemo,
+        orderNamespace: 'pharmacy2_order',
+        cart,
+        total,
+        deliveryFee,
+        deliveryInfo: formData,
+        payment:
+          formData.paymentMethod === 'card'
+            ? { method: 'card', last4: digitsOnly(cardInfo.cardNumber).slice(-4) }
+            : { method: 'cash' },
+      })
 
-    const order = {
-      orderNumber: orderNum,
-      items: cart,
-      deliveryInfo: formData,
-      payment:
-        formData.paymentMethod === 'card'
-          ? { method: 'card', last4: digitsOnly(cardInfo.cardNumber).slice(-4) }
-          : { method: 'cash' },
-      total,
-      placedAt: new Date().toISOString(),
+      setOrderNumber(result.orderNumber)
+
+      if (isDemo) localStorage.removeItem(cartKey)
+      else removeSiteItem(cartKey)
+      setCart([])
+      setOrderPlaced(true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not place order. Please try again.'
+      setPaymentError(message)
+    } finally {
+      setIsSubmitting(false)
     }
-    const ownerId = !isDemo ? (getStoredUser()?.id ?? getSiteOwnerId()) : null
-    if (ownerId) {
-      const prefix = getPrefixForUserId(ownerId)
-      localStorage.setItem(`${prefix}pharmacy2_order_${orderNum}`, JSON.stringify(order))
-      try {
-        const listRaw = getItemForUser(ownerId, 'pharmacyOrders')
-        const list = JSON.parse(listRaw || '[]')
-        list.push({
-          id: orderNum,
-          customerName: formData.fullName?.trim() || 'Customer',
-          customerEmail: formData.email?.trim(),
-          total,
-          status: 'pending',
-          createdAt: order.placedAt,
-          items: cart.map((i) => `${i.product.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`),
-        })
-        setItemForUser(ownerId, 'pharmacyOrders', JSON.stringify(list))
-      } catch {
-        // ignore
-      }
-    } else if (!isDemo) {
-      localStorage.setItem(`pharmacy2_order_${orderNum}`, JSON.stringify(order))
-      try {
-        const list = JSON.parse(localStorage.getItem('pharmacyOrders') || '[]')
-        list.push({
-          id: orderNum,
-          customerName: formData.fullName?.trim() || 'Customer',
-          customerEmail: formData.email?.trim(),
-          total,
-          status: 'pending',
-          createdAt: order.placedAt,
-          items: cart.map((i) => `${i.product.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`),
-        })
-        localStorage.setItem('pharmacyOrders', JSON.stringify(list))
-      } catch {
-        // ignore
-      }
-    } else {
-      localStorage.setItem(`pharmacy2_order_${orderNum}`, JSON.stringify(order))
-    }
-
-    if (isDemo) localStorage.removeItem(cartKey)
-    else removeSiteItem(cartKey)
-    setCart([])
-    setOrderPlaced(true)
-    setIsSubmitting(false)
   }
 
   if (!cartLoaded) {
@@ -301,13 +278,13 @@ function Template2CheckoutContent() {
           </p>
           <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
             <Link
-              href={isDemo ? '/templates/pharmacy/2/medications?demo=1' : '/templates/pharmacy/2/medications'}
+              href={withDemo('/templates/pharmacy/2/medications')}
               className="px-6 py-3 rounded-lg bg-[#7a5c2e] text-white hover:bg-[#624824] transition-colors font-semibold"
             >
               Browse Products
             </Link>
             <Link
-              href={isDemo ? '/templates/pharmacy/2?demo=1' : '/templates/pharmacy/2'}
+              href={withDemo('/templates/pharmacy/2')}
               className="px-6 py-3 rounded-lg border border-neutral-border text-neutral-dark hover:bg-neutral-light transition-colors font-semibold"
             >
               Back to Home
@@ -384,16 +361,14 @@ function Template2CheckoutContent() {
             <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center overflow-hidden border border-amber-200">
               {isDemo ? (
                 <Image src="/mod logo.png" alt="Logo" width={48} height={48} className="object-cover" />
-              ) : brand.logo ? (
-                brand.logo.startsWith('data:') ? (
-                  <img src={brand.logo} alt={`${brand.name} logo`} className="w-full h-full object-cover" />
-                ) : (
-                  <Image src={brand.logo} alt={`${brand.name} logo`} width={48} height={48} className="object-cover" />
-                )
               ) : (
-                <div className="w-full h-full bg-amber-700 flex items-center justify-center text-white font-bold">
-                  {(brand.name || 'P').charAt(0).toUpperCase()}
-                </div>
+                <BrandLogo
+                  src={brand.logo}
+                  alt={`${brand.name || 'Pharmacy'} logo`}
+                  fallbackText={brand.name || 'P'}
+                  imageClassName="w-full h-full object-cover"
+                  fallbackClassName="w-full h-full bg-amber-700 flex items-center justify-center text-white font-bold"
+                />
               )}
             </div>
             <div className="leading-tight">
@@ -543,7 +518,10 @@ function Template2CheckoutContent() {
                   <div className="grid grid-cols-2 gap-4">
                     <button
                       type="button"
-                      onClick={() => setFormData({ ...formData, paymentMethod: 'cash' })}
+                      onClick={() => {
+                        setPaymentError('')
+                        setFormData({ ...formData, paymentMethod: 'cash' })
+                      }}
                       className={`p-4 rounded-lg border-2 transition-colors ${
                         formData.paymentMethod === 'cash'
                           ? 'border-amber-700 bg-amber-50'
@@ -554,7 +532,10 @@ function Template2CheckoutContent() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setFormData({ ...formData, paymentMethod: 'card' })}
+                      onClick={() => {
+                        setPaymentError('')
+                        setFormData({ ...formData, paymentMethod: 'card' })
+                      }}
                       className={`p-4 rounded-lg border-2 transition-colors ${
                         formData.paymentMethod === 'card'
                           ? 'border-amber-700 bg-amber-50'
@@ -577,7 +558,10 @@ function Template2CheckoutContent() {
                           type="text"
                           required
                           value={cardInfo.cardholderName}
-                          onChange={(e) => setCardInfo({ ...cardInfo, cardholderName: e.target.value })}
+                          onChange={(e) => {
+                            setPaymentError('')
+                            setCardInfo({ ...cardInfo, cardholderName: e.target.value })
+                          }}
                           className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-amber-600 focus:border-transparent"
                           placeholder="Name on card"
                           autoComplete="cc-name"
@@ -590,7 +574,10 @@ function Template2CheckoutContent() {
                           inputMode="numeric"
                           required
                           value={cardInfo.cardNumber}
-                          onChange={(e) => setCardInfo({ ...cardInfo, cardNumber: formatCardNumber(e.target.value) })}
+                          onChange={(e) => {
+                            setPaymentError('')
+                            setCardInfo({ ...cardInfo, cardNumber: formatCardNumber(e.target.value) })
+                          }}
                           className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-amber-600 focus:border-transparent"
                           placeholder="1234 5678 9012 3456"
                           autoComplete="cc-number"
@@ -603,7 +590,10 @@ function Template2CheckoutContent() {
                           inputMode="numeric"
                           required
                           value={cardInfo.expiry}
-                          onChange={(e) => setCardInfo({ ...cardInfo, expiry: formatExpiry(e.target.value) })}
+                          onChange={(e) => {
+                            setPaymentError('')
+                            setCardInfo({ ...cardInfo, expiry: formatExpiry(e.target.value) })
+                          }}
                           className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-amber-600 focus:border-transparent"
                           placeholder="MM/YY"
                           autoComplete="cc-exp"
@@ -616,13 +606,17 @@ function Template2CheckoutContent() {
                           inputMode="numeric"
                           required
                           value={cardInfo.cvc}
-                          onChange={(e) => setCardInfo({ ...cardInfo, cvc: formatCvc(e.target.value) })}
+                          onChange={(e) => {
+                            setPaymentError('')
+                            setCardInfo({ ...cardInfo, cvc: formatCvc(e.target.value) })
+                          }}
                           className="w-full px-4 py-2 border border-neutral-border rounded-lg focus:ring-2 focus:ring-amber-600 focus:border-transparent"
                           placeholder="123"
                           autoComplete="cc-csc"
                         />
                       </div>
                     </div>
+                    {paymentError ? <p className="mt-3 text-sm text-error">{paymentError}</p> : null}
                   </div>
                 )}
 

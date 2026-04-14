@@ -13,8 +13,13 @@ urlpatterns = [
     # Authentication
     path('auth/signup/', auth.signup, name='signup'),
     path('auth/login/', auth.login, name='login'),
+    path('auth/logout/', auth.logout, name='logout'),
+    path('auth/delete-account/', auth.delete_account, name='delete_account'),
     path('auth/me/', auth.get_current_user, name='get_current_user'),
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('auth/forgot-password/', auth.forgot_password, name='forgot_password'),
+    path('auth/password-reset/validate/', auth.validate_password_reset_token, name='password_reset_validate'),
+    path('auth/password-reset/confirm/', auth.reset_password, name='password_reset_confirm'),
 
     # Business Info endpoints (custom to handle PATCH without ID)
     path('business-info/', business_info.BusinessInfoViewSet.as_view({

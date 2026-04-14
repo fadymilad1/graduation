@@ -20,21 +20,22 @@ python manage.py cleanup_products --delete-all
 Use the sample file at `/sample-pharmacy-products.csv` or create your own:
 
 ```csv
-name,category,description,price,stock
-Test Product 1,Pain Relief,Test description,9.99,25
-Test Product 2,Vitamins,Another test,15.50,50
+Product Name,Category,Price,Stock Quantity,Description,Image
+Test Product 1,Pain Relief,9.99,25,Test description,https://placehold.co/600x400/png?text=Product+1
+Test Product 2,Vitamins,15.50,50,Another test,
 ```
 
-**Important**: Ensure no extra spaces, proper commas, and stock column has numeric values.
+**Important**:
+- Required columns are `Product Name`, `Category`, `Price`, `Stock Quantity`, and `Description`.
+- Optional image aliases are `Image`, `image_url`, and `Image Link`.
+- Invalid image URLs do not fail the row; the row imports with image cleared.
 
 ### 3. Upload CSV
 
-1. Navigate to: `http://localhost:3000/dashboard/pharmacy/setup`
-2. Click "Import products (CSV)" button
+1. Navigate to: `http://localhost:3000/dashboard/pharmacy/products`
+2. Upload the CSV file in the "CSV Upload" section
 3. Select your CSV file
-4. Watch browser console for debug logs:
-   - Should see: `Parsed product: Test Product 1, stock raw: "25", parsed: 25`
-   - Should see: `Uploading products, first product: {name: "...", stock: 25}`
+4. Click "Upload CSV"
 
 ### 4. Verify Backend Received Data
 
@@ -66,11 +67,18 @@ Test Product 2: stock=50, in_stock=True
 
 Navigate to: `http://localhost:3000/templates/pharmacy/3/medications`
 
+You can also validate the added templates:
+- `http://localhost:3000/templates/pharmacy/4/medications`
+- `http://localhost:3000/templates/pharmacy/5/medications`
+- `http://localhost:3000/templates/pharmacy/6/medications`
+
 Expected:
 - Products display with correct stock numbers
 - Stock badges show "In Stock" (green) for stock > 5
 - Stock badges show "Low Stock" (orange) for stock 1-4
 - Stock badges show "Out of Stock" (red) for stock = 0
+- Products with valid image URLs display images
+- Products with blank or invalid image URLs show template fallback image UI
 
 ## Common Issues & Solutions
 
@@ -83,8 +91,18 @@ Expected:
 
 **Solution**:
 - Ensure CSV has no extra spaces: `25` not ` 25 `
-- Ensure stock column exists and is 5th column
+- Ensure stock column exists (for example: `Stock Quantity`)
 - Check CSV encoding (should be UTF-8)
+
+### Issue 1b: Product image not shown
+
+**Diagnosis**:
+- Check image column values start with `http://` or `https://`
+- Confirm the header uses one of: `Image`, `image_url`, `Image Link`
+
+**Solution**:
+- Use a valid absolute URL
+- Re-upload CSV; invalid image values are ignored, but the rest of the row still imports
 
 ### Issue 2: Products not persisting
 
@@ -165,6 +183,7 @@ curl -X GET http://localhost:8000/api/pharmacy/products/ \
 ✅ Stock badges display correct status  
 ✅ "Add to Cart" disabled when stock = 0  
 ✅ Cannot add more than available stock to cart  
+✅ Invalid image URLs are ignored without failing otherwise valid rows  
 
 ## Troubleshooting Checklist
 
@@ -173,6 +192,7 @@ curl -X GET http://localhost:8000/api/pharmacy/products/ \
 - [ ] User logged in with valid token
 - [ ] CSV file properly formatted
 - [ ] Stock column has numeric values
+- [ ] Optional image values (if provided) are valid `http/https` URLs
 - [ ] No extra spaces in CSV
 - [ ] Database migrations applied
 - [ ] Browser console shows no errors

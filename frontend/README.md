@@ -1,13 +1,13 @@
 # Medify - Medical Website Builder Frontend
 
-A modern, professional SaaS platform frontend for building medical websites for Hospitals and Pharmacies. Built with Next.js 14, TypeScript, and Tailwind CSS.
+A modern frontend for building medical websites for Hospitals and Pharmacies. Built with Next.js 16, TypeScript, and Tailwind CSS.
 
 ## Features
 
 - 🏥 **Hospital Website Builder** - Form-based website creation
-- 💊 **Pharmacy Website Builder** - Template-based website creation
+- 💊 **Pharmacy Website Builder** - Purchase-aware template marketplace and website publishing workflow
 - 🤖 **AI Assistant** - Intelligent content generation and website management
-- 📊 **Dashboard** - Comprehensive dashboard with setup progress tracking
+- 📊 **Dashboard** - Comprehensive dashboard with setup progress and operational modules
 - 🎨 **Modern UI** - Clean, professional design with Tailwind CSS
 - 📱 **Responsive** - Desktop-first design that works on all devices
 
@@ -66,11 +66,18 @@ npm run dev
 - **Landing Page** (`/`) - Hero, features, pricing, testimonials
 - **Login** (`/login`) - User authentication
 - **Signup** (`/signup`) - User registration
+- **Forgot Password** (`/forgot-password`) - Request password reset link
+- **Reset Password** (`/reset-password`) - Set new password from secure token
 
 ### Dashboard Pages
 - **Dashboard** (`/dashboard`) - Main dashboard with widgets and stats
 - **Hospital Setup** (`/dashboard/hospital/setup`) - Hospital website builder
-- **Templates** (`/dashboard/templates`) - Pharmacy template selection
+- **Pharmacy Overview** (`/dashboard/pharmacy`) - Pharmacy launch and inventory overview
+- **Pharmacy Setup** (`/dashboard/pharmacy/setup`) - Initial website setup flow
+- **Pharmacy Customize** (`/dashboard/pharmacy/customize`) - Branding, section toggles, and content controls
+- **Pharmacy Products** (`/dashboard/pharmacy/products`) - CSV import and catalog management
+- **Pharmacy Templates** (`/dashboard/pharmacy/templates`) - Purchase, activate, and cancel templates
+- **Pharmacy Preview** (`/dashboard/pharmacy/preview`) - Device preview and publish controls
 - **Business Info** (`/dashboard/business-info`) - Business information form
 - **AI Assistant** (`/dashboard/ai-assistant`) - AI chat interface
 - **Settings** (`/dashboard/settings`) - Account and website settings
@@ -115,16 +122,14 @@ npm start
 ### Linting
 
 ```bash
-npm run lint
+npx tsc --noEmit
 ```
 
 ## Notes
 
-- This is a **frontend-only** implementation
-- No backend or database logic is included
-- All data is placeholder/mock data
-- Components are ready to be connected to a backend API
-- Forms include validation structure but no actual validation logic
+- Frontend integrates with the Django API using `NEXT_PUBLIC_API_URL`.
+- Pharmacy template pages also mirror selected data in scoped/public local storage for instant owner and visitor previews.
+- For release validation, prefer `npm run build` and `npx tsc --noEmit`.
 
 ## License
 

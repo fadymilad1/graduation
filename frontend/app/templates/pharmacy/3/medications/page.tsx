@@ -4,7 +4,10 @@ import Link from 'next/link'
 import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { FiMinus, FiPlus, FiShoppingCart, FiSearch, FiFilter, FiPackage } from 'react-icons/fi'
-import { getSiteItem, setSiteItem, removeSiteItem } from '@/lib/storage'
+import { BrandLogo } from '@/components/pharmacy/BrandLogo'
+import { ProductImage } from '@/components/pharmacy/ProductImage'
+import { normalizeRenderableProductImageUrl } from '@/lib/productImage'
+import { getSiteItem, setSiteItem, removeSiteItem, setPublicSiteItem, setSiteOwnerId } from '@/lib/storage'
 
 type Product = {
   id: string
@@ -14,12 +17,13 @@ type Product = {
   price: string
   inStock: boolean
   stock?: number
+  imageUrl?: string
 }
 
 type CartItem = { product: Product; quantity: number }
 
 type PharmacySetup = {
-  products?: Array<{ name: string; category?: string; description?: string; price?: string; inStock?: boolean; stock?: number }>
+  products?: Array<{ name: string; category?: string; description?: string; price?: string; inStock?: boolean; stock?: number; imageUrl?: string; image_url?: string }>
 }
 
 type BusinessInfo = {
@@ -52,13 +56,17 @@ const demoProducts: Product[] = [
 function Template3MedicationsContent() {
   const searchParams = useSearchParams()
   const isDemo = searchParams?.get('demo') === '1' || searchParams?.get('demo') === 'true'
+  const ownerId = searchParams?.get('owner') || ''
   const cartKey = isDemo ? 'pharmacy3_cart_demo' : 'pharmacy3_cart'
 
   const withDemo = (path: string) => {
-    if (!isDemo) return path
     const [base, hash] = path.split('#')
-    const sep = base.includes('?') ? '&' : '?'
-    return `${base}${sep}demo=1${hash ? `#${hash}` : ''}`
+    const [pathname, query = ''] = base.split('?')
+    const params = new URLSearchParams(query)
+    if (isDemo) params.set('demo', '1')
+    if (ownerId) params.set('owner', ownerId)
+    const nextQuery = params.toString()
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash ? `#${hash}` : ''}`
   }
 
   const [cart, setCart] = useState<CartItem[]>([])
@@ -68,6 +76,12 @@ function Template3MedicationsContent() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
   const [sortBy, setSortBy] = useState<SortOption>('name')
+
+  useEffect(() => {
+    if (ownerId) {
+      setSiteOwnerId(ownerId)
+    }
+  }, [ownerId])
 
   // Load business info
   useEffect(() => {
@@ -105,7 +119,11 @@ function Template3MedicationsContent() {
 
           if (response.ok) {
             const products = await response.json()
-            const productList = Array.isArray(products) ? products : []
+            const productList = Array.isArray(products)
+              ? products
+              : Array.isArray((products as any)?.results)
+                ? (products as any).results
+                : []
             
             // Only use backend data if we actually have products
             if (productList.length > 0) {
@@ -118,6 +136,7 @@ function Template3MedicationsContent() {
                   price: `$${parseFloat(p.price || 0).toFixed(2)}`,
                   stock: typeof p.stock === 'number' ? p.stock : (p.stock ? parseInt(String(p.stock), 10) : 0),
                   inStock: p.in_stock !== false && (typeof p.stock === 'number' ? p.stock > 0 : true),
+                  imageUrl: normalizeRenderableProductImageUrl(p.image_url_resolved || p.image_url || ''),
                 }))
               )
               loadedFromBackend = true
@@ -130,7 +149,6 @@ function Template3MedicationsContent() {
 
       // If backend didn't provide products, load from localStorage
       if (!loadedFromBackend) {
-        console.log('Loading products from localStorage...')
         const setup = safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup'))
         const list = setup?.products?.filter((p) => p.name?.trim()) ?? []
         
@@ -163,11 +181,10 @@ function Template3MedicationsContent() {
                 price: priceFormatted,
                 stock: stockValue,
                 inStock: stockValue !== undefined ? stockValue > 0 : (p as any).inStock !== false,
+                imageUrl: normalizeRenderableProductImageUrl((p as any).imageUrl || (p as any).image_url || ''),
               }
             })
           )
-        } else {
-          console.log('No products found in localStorage either')
         }
       }
 
@@ -194,6 +211,13 @@ function Template3MedicationsContent() {
   }, [cart, cartKey, isDemo])
 
   const allProducts = useMemo(() => (isDemo ? demoProducts : pharmacyProducts), [isDemo, pharmacyProducts])
+
+  useEffect(() => {
+    if (isDemo || allProducts.length === 0) return
+    const serialized = JSON.stringify(allProducts)
+    setSiteItem('template3ProductsCache', serialized)
+    setPublicSiteItem('template3ProductsCache', serialized)
+  }, [allProducts, isDemo])
 
   // Get unique categories
   const categories = useMemo(() => {
@@ -330,17 +354,13 @@ function Template3MedicationsContent() {
         <div className="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between gap-3">
           <Link href={withDemo('/templates/pharmacy/3')} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
             <div className="w-12 h-12 rounded-lg overflow-hidden border-2 border-gray-200 shadow-sm bg-white flex items-center justify-center">
-              {businessInfo?.logo && businessInfo.logo.trim() !== '' ? (
-                <img 
-                  src={businessInfo.logo} 
-                  alt={`${businessInfo.name || 'Pharmacy'} Logo`}
-                  className="w-full h-full object-contain p-1"
-                />
-              ) : (
-                <div className="w-full h-full bg-neutral-dark text-white flex items-center justify-center text-lg font-bold">
-                  {((businessInfo?.name || 'P').charAt(0).toUpperCase())}
-                </div>
-              )}
+              <BrandLogo
+                src={businessInfo?.logo || null}
+                alt={`${businessInfo?.name || 'Pharmacy'} Logo`}
+                fallbackText={businessInfo?.name || 'P'}
+                imageClassName="w-full h-full object-contain p-1"
+                fallbackClassName="w-full h-full bg-neutral-dark text-white flex items-center justify-center text-lg font-bold"
+              />
             </div>
             <span className="text-xl font-bold text-neutral-dark">
               {businessInfo?.name || 'Minimal Pharmacy'}
@@ -451,9 +471,14 @@ function Template3MedicationsContent() {
                     key={product.id}
                     className="group rounded-xl border border-neutral-border bg-white overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col"
                   >
-                    {/* Product Image Placeholder */}
-                    <div className="bg-gradient-to-br from-gray-100 to-gray-50 h-48 flex items-center justify-center border-b border-neutral-border">
-                      <FiPackage size={64} className="text-gray-300" />
+                    <div className="bg-gradient-to-br from-gray-100 to-gray-50 h-48 flex items-center justify-center border-b border-neutral-border overflow-hidden">
+                      <ProductImage
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="h-full w-full object-cover"
+                        fallbackClassName="grid h-full w-full place-items-center bg-gradient-to-br from-gray-100 to-gray-50 text-gray-400"
+                        fallbackLabel={product.category || 'No product image'}
+                      />
                     </div>
 
                     {/* Product Info */}

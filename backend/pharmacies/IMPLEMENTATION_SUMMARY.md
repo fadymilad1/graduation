@@ -78,9 +78,9 @@ DELETE /api/pharmacy/products/delete_all/     # Clear all
 
 ### CSV Format for Bulk Upload:
 ```csv
-name,category,description,price,stock
-Paracetamol 500mg,Pain Relief,For fever and pain,4.99,50
-Vitamin C 1000mg,Supplements,Immune support,9.99,30
+Product Name,Category,Price,Stock Quantity,Description,Image
+Paracetamol 500mg,Pain Relief,4.99,50,For fever and pain,https://placehold.co/600x400/png?text=Paracetamol
+Vitamin C 1000mg,Supplements,9.99,30,Immune support,
 ```
 
 Then upload as:
@@ -176,7 +176,7 @@ backend/
 5. **Stock Management** - Update stock quantities
 
 ### Optional Enhancements:
-- Add product images
+- Improve product image optimization (compression/CDN)
 - Add search/filter on product list
 - Add product variants (sizes, dosages)
 - Add inventory alerts (low stock)

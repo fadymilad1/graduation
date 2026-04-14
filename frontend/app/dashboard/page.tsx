@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { ProgressBar } from '@/components/ui/ProgressBar'
@@ -79,6 +80,7 @@ const AnimatedNumber = ({ value, duration = 900 }: { value: number; duration?: n
 }
 
 export default function DashboardPage() {
+  const router = useRouter()
   const [userType, setUserType] = useState<'hospital' | 'pharmacy'>('hospital')
   const [selectedFeatures, setSelectedFeatures] = useState<any>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null)
@@ -95,7 +97,13 @@ export default function DashboardPage() {
     const userData = localStorage.getItem('user')
     if (userData) {
       const user = JSON.parse(userData)
-      setUserType(user.businessType || user.business_type || 'hospital')
+      const detectedType = user.businessType || user.business_type || 'hospital'
+      setUserType(detectedType)
+
+      if (detectedType === 'pharmacy') {
+        router.replace('/dashboard/pharmacy')
+        return
+      }
     }
 
     // Get selected features (for hospital) - user-scoped
@@ -185,7 +193,7 @@ export default function DashboardPage() {
     }
 
     setIsPublished(getScopedItem('isPublished') === 'true')
-  }, [])
+  }, [router])
 
   // Refresh pharmacy order stats when page gains focus (e.g. after placing order or visiting Orders page)
   useEffect(() => {

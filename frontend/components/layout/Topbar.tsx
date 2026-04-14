@@ -1,9 +1,10 @@
 'use client'
 
 import React, { useEffect, useLayoutEffect, useState, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { FiBell, FiSearch, FiMenu } from 'react-icons/fi'
-import { getScopedItem, setScopedItem } from '@/lib/storage'
+import { BrandLogo } from '@/components/pharmacy/BrandLogo'
+import { getScopedItem, normalizeLogoUrl, setScopedItem } from '@/lib/storage'
 
 interface TopbarProps {
   onMenuClick?: () => void
@@ -48,7 +49,9 @@ const fallbackNotifications: NotificationItem[] = [
 
 export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
   const router = useRouter()
+  const pathname = usePathname()
   const [userName, setUserName] = useState('User')
+  const [userLogo, setUserLogo] = useState<string | null>(null)
   const [currentUserType, setCurrentUserType] = useState<'hospital' | 'pharmacy'>('hospital')
   const [notifications, setNotifications] = useState<NotificationItem[]>(fallbackNotifications)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
@@ -73,7 +76,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
       description: 'Products & Information hub',
       keywords: ['my website', 'products', 'information', 'products & information', 'catalog', 'content'],
       getHref: (userType) =>
-        userType === 'pharmacy' ? '/dashboard/pharmacy/setup' : '/dashboard/hospital/setup',
+        userType === 'pharmacy' ? '/dashboard/pharmacy' : '/dashboard/hospital/setup',
     },
     {
       label: 'Business Info',
@@ -90,9 +93,30 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
     },
     {
       label: 'Pharmacy Setup',
-      description: 'Add pharmacy products',
+      description: 'Create pharmacy website',
       href: '/dashboard/pharmacy/setup',
-      keywords: ['pharmacy', 'setup', 'products', 'inventory'],
+      keywords: ['pharmacy', 'setup', 'launch', 'website builder'],
+      userTypes: ['pharmacy'],
+    },
+    {
+      label: 'Pharmacy Customization',
+      description: 'Edit branding and sections',
+      href: '/dashboard/pharmacy/customize',
+      keywords: ['customize', 'branding', 'theme', 'sections'],
+      userTypes: ['pharmacy'],
+    },
+    {
+      label: 'Pharmacy Products',
+      description: 'CSV import and product catalog',
+      href: '/dashboard/pharmacy/products',
+      keywords: ['products', 'csv', 'inventory', 'stock'],
+      userTypes: ['pharmacy'],
+    },
+    {
+      label: 'Pharmacy Preview',
+      description: 'Responsive website preview',
+      href: '/dashboard/pharmacy/preview',
+      keywords: ['preview', 'mobile', 'desktop', 'website'],
       userTypes: ['pharmacy'],
     },
     {
@@ -112,18 +136,53 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
   ]
 
   useEffect(() => {
-    // Get user name from localStorage
+    let resolvedUserName = 'User'
+    let resolvedUserType: 'hospital' | 'pharmacy' = 'hospital'
+    let resolvedUserLogo: string | null = null
+
+    // Get user name and type from localStorage
     const userData = localStorage.getItem('user')
     if (userData) {
       try {
-        const user = JSON.parse(userData)
-        setUserName(user.name || 'User')
-        setCurrentUserType(user.businessType || user.business_type || 'hospital')
+        const user = JSON.parse(userData) as {
+          name?: string
+          businessType?: 'hospital' | 'pharmacy'
+          business_type?: 'hospital' | 'pharmacy'
+          logo?: string
+          logo_url?: string
+        }
+        resolvedUserName = user.name || 'User'
+        resolvedUserType = user.businessType || user.business_type || 'hospital'
+        resolvedUserLogo = normalizeLogoUrl(user.logo_url || user.logo)
       } catch (e) {
         // Handle error
       }
     }
-  }, [])
+
+    const businessInfoRaw = getScopedItem('businessInfo')
+    if (businessInfoRaw) {
+      try {
+        const businessInfo = JSON.parse(businessInfoRaw) as {
+          name?: string
+          logo?: string
+          logo_url?: string
+        }
+        const businessLogo = normalizeLogoUrl(businessInfo.logo || businessInfo.logo_url)
+        if (businessLogo) {
+          resolvedUserLogo = businessLogo
+        }
+        if (resolvedUserName === 'User' && businessInfo.name?.trim()) {
+          resolvedUserName = businessInfo.name.trim()
+        }
+      } catch {
+        // Ignore malformed local business info payload
+      }
+    }
+
+    setUserName(resolvedUserName)
+    setCurrentUserType(resolvedUserType)
+    setUserLogo(resolvedUserLogo)
+  }, [pathname])
 
   useEffect(() => {
     const storedNotifications = getScopedItem('notifications')
@@ -381,8 +440,14 @@ export const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
           )}
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-primary rounded-full flex items-center justify-center text-white font-semibold text-sm sm:text-base">
-            {userName.charAt(0).toUpperCase()}
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full overflow-hidden">
+            <BrandLogo
+              src={userLogo}
+              alt={`${userName} logo`}
+              fallbackText={userName}
+              imageClassName="h-full w-full object-cover"
+              fallbackClassName="h-full w-full bg-primary flex items-center justify-center text-white font-semibold text-sm sm:text-base"
+            />
           </div>
           <span className="text-neutral-dark font-medium text-sm sm:text-base hidden sm:inline">{userName}</span>
         </div>

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { persistAuthSession } from '@/lib/auth'
 import { FiMail, FiLock, FiAlertCircle } from 'react-icons/fi'
 
 export default function LoginPage() {
@@ -64,10 +65,10 @@ export default function LoginPage() {
       }
 
       // Store user data and tokens
-      localStorage.setItem('user', JSON.stringify(data.user))
-      localStorage.setItem('access_token', data.tokens.access)
-      localStorage.setItem('refresh_token', data.tokens.refresh)
-      localStorage.setItem('isLoggedIn', 'true')
+      persistAuthSession({
+        user: data.user,
+        tokens: data.tokens,
+      })
 
       // Redirect to dashboard
       router.push('/dashboard')

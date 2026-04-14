@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { FileUpload } from '@/components/ui/FileUpload'
 import { FiMapPin, FiCheckCircle, FiGlobe } from 'react-icons/fi'
-import { getScopedItem, setScopedItem } from '@/lib/storage'
+import { getScopedItem, normalizeLogoUrl, setPublicSiteItem, setScopedItem } from '@/lib/storage'
+import { pharmacyApi } from '@/lib/pharmacy'
 import type L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -42,6 +43,7 @@ export default function BusinessInfoPage() {
   const [userType, setUserType] = useState<'hospital' | 'pharmacy'>('hospital')
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
     const [logoUrlForStorage, setLogoUrlForStorage] = useState<string | null>(null)
+  const normalizedLogoPreview = useMemo(() => normalizeLogoUrl(logoPreview), [logoPreview])
   const [formData, setFormData] = useState({
     name: '',
     logo: null as File | null,
@@ -159,6 +161,7 @@ export default function BusinessInfoPage() {
       const { logo, ...rest } = formData
         const toSave = logoUrlForStorage ? { ...rest, logo: logoUrlForStorage } : rest
         setScopedItem('businessInfo', JSON.stringify(toSave))
+        setPublicSiteItem('businessInfo', JSON.stringify(toSave))
     } catch {
       // Ignore storage write errors
     }
@@ -167,6 +170,7 @@ export default function BusinessInfoPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsPublishing(true)
+    let latestLogoUrl = logoUrlForStorage
     
     try {
       // Save to backend API first
@@ -198,7 +202,10 @@ export default function BusinessInfoPage() {
 
           if (response.ok) {
             const respData = await response.json()
-            if (respData.logo_url) setLogoUrlForStorage(respData.logo_url)
+            if (respData.logo_url) {
+              latestLogoUrl = respData.logo_url
+              setLogoUrlForStorage(respData.logo_url)
+            }
           } else if (response.status === 404) {
             // Business info doesn't exist, create it
             const createResp = await fetch(`${API_URL}/business-info/`, {
@@ -210,12 +217,29 @@ export default function BusinessInfoPage() {
             })
             if (createResp.ok) {
               const createData = await createResp.json()
-              if (createData.logo_url) setLogoUrlForStorage(createData.logo_url)
+              if (createData.logo_url) {
+                latestLogoUrl = createData.logo_url
+                setLogoUrlForStorage(createData.logo_url)
+              }
             }
           }
       }
+      const businessInfoSnapshot = {
+        name: formData.name,
+        about: formData.about,
+        address: formData.address,
+        workingHours: formData.workingHours,
+        contactPhone: formData.contactPhone,
+        contactEmail: formData.contactEmail,
+        website: formData.website,
+        ...(latestLogoUrl ? { logo: latestLogoUrl } : {}),
+      }
+      setScopedItem('businessInfo', JSON.stringify(businessInfoSnapshot))
+      setPublicSiteItem('businessInfo', JSON.stringify(businessInfoSnapshot))
+
       // Backend save successful, no need for localStorage
       setScopedItem('isPublished', 'true')
+      setPublicSiteItem('isPublished', 'true')
     } catch (error) {
       console.error('Failed to save business info to backend:', error)
       // Only save to localStorage if backend fails (without logo to avoid quota)
@@ -229,16 +253,13 @@ export default function BusinessInfoPage() {
           contactEmail: formData.contactEmail,
           website: formData.website,
         }
-        setScopedItem('businessInfo', JSON.stringify(businessInfoToSave))
-          if (logoUrlForStorage) {
-            try {
-              const saved = getScopedItem('businessInfo')
-              const parsed = saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(businessInfoToSave))
-              parsed.logo = logoUrlForStorage
-              setScopedItem('businessInfo', JSON.stringify(parsed))
-            } catch { /* ignore */ }
-          }
+        const fallbackSnapshot = logoUrlForStorage
+          ? { ...businessInfoToSave, logo: logoUrlForStorage }
+          : businessInfoToSave
+        setScopedItem('businessInfo', JSON.stringify(fallbackSnapshot))
         setScopedItem('isPublished', 'true')
+        setPublicSiteItem('businessInfo', JSON.stringify(fallbackSnapshot))
+        setPublicSiteItem('isPublished', 'true')
       } catch (storageError) {
         console.error('Failed to save business info to localStorage:', storageError)
         // Continue anyway - user can retry
@@ -250,21 +271,39 @@ export default function BusinessInfoPage() {
     
     // After publishing, send user to their live website (pharmacy) or dashboard (hospital)
     setTimeout(() => {
-      if (userType === 'pharmacy') {
-        const selectedTemplate = getScopedItem('selectedTemplate')
-        const isPaid = getScopedItem('templateSubscriptionStartedAt')
-        
-        // Only redirect to template if user has selected AND paid for one
-        if (selectedTemplate && isPaid) {
-          const templateId = parseInt(selectedTemplate)
-          router.push(`/templates/pharmacy/${templateId}`)
-        } else {
-          // Redirect to template selection if no template selected yet
+      void (async () => {
+        if (userType === 'pharmacy') {
+          const profileRes = await pharmacyApi.getProfile()
+          const backendTemplateId = profileRes.data?.template_id || null
+
+          const fallbackTemplateRaw = getScopedItem('selectedTemplate')
+          const fallbackTemplateId = fallbackTemplateRaw ? Number.parseInt(fallbackTemplateRaw, 10) : NaN
+          const resolvedTemplateId = backendTemplateId || (Number.isFinite(fallbackTemplateId) ? fallbackTemplateId : null)
+
+          if (resolvedTemplateId) {
+            const userRaw = localStorage.getItem('user')
+            let ownerParam = ''
+            if (userRaw) {
+              try {
+                const user = JSON.parse(userRaw)
+                if (user?.id) {
+                  ownerParam = `?owner=${encodeURIComponent(String(user.id))}`
+                }
+              } catch {
+                // Ignore malformed user payloads.
+              }
+            }
+
+            router.push(`/templates/pharmacy/${resolvedTemplateId}${ownerParam}`)
+            return
+          }
+
           router.push('/dashboard/pharmacy/templates')
+          return
         }
-      } else {
+
         router.push('/dashboard')
-      }
+      })()
     }, 2000)
   }
 
@@ -321,12 +360,12 @@ export default function BusinessInfoPage() {
                   }
                 }}
               />
-              {logoPreview && (
+              {normalizedLogoPreview && (
                 <div className="mt-2 flex items-center gap-3">
                   <span className="text-sm text-neutral-gray">Logo preview:</span>
                   <div className="h-12 w-12 rounded-md border border-neutral-border overflow-hidden flex items-center justify-center bg-white">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={logoPreview} alt="Logo preview" className="h-full w-full object-contain" />
+                    <img src={normalizedLogoPreview} alt="Logo preview" className="h-full w-full object-contain" />
                   </div>
                 </div>
               )}

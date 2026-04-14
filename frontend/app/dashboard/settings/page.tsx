@@ -1,193 +1,370 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { Card } from '@/components/ui/Card'
+import Link from 'next/link'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { FiAlertTriangle, FiGlobe, FiInfo, FiLogOut, FiTrash2 } from 'react-icons/fi'
+
+import { PaymentModal } from '@/components/payment/PaymentModal'
 import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
-import { FiLogOut } from 'react-icons/fi'
-import { getScopedItem } from '@/lib/storage'
+import { Modal } from '@/components/ui/Modal'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { useToast } from '@/components/ui/ToastProvider'
+import { authApi } from '@/lib/api'
+import { clearAuthSession, logoutUser } from '@/lib/auth'
+import { pharmacyApi } from '@/lib/pharmacy'
+import { getTemplateById } from '@/lib/pharmacyTemplates'
+import { removePublicSiteItem, setPublicSiteItem } from '@/lib/storage'
+
+type UserProfile = {
+  name: string
+  email: string
+  businessType: 'hospital' | 'pharmacy'
+}
 
 export default function SettingsPage() {
-  const [profileData, setProfileData] = useState({
+  const router = useRouter()
+  const { showToast } = useToast()
+
+  const [isLoading, setIsLoading] = useState(true)
+  const [userProfile, setUserProfile] = useState<UserProfile>({
     name: '',
     email: '',
+    businessType: 'hospital',
   })
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
+  const [isPublished, setIsPublished] = useState(false)
+  const [paymentOpen, setPaymentOpen] = useState(false)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [isDeleteAccountModalOpen, setIsDeleteAccountModalOpen] = useState(false)
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
+  const [deleteAccountEmail, setDeleteAccountEmail] = useState('')
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState('')
+  const [deleteAccountConfirmation, setDeleteAccountConfirmation] = useState('')
+  const [deleteAccountError, setDeleteAccountError] = useState('')
 
-  const [subscriptionPlan, setSubscriptionPlan] = useState<{
-    templateName: string
-    price: number
-    startedAt: string
-    renewAt: string
-  } | null>(null)
-
-  // Load signed-in user info from localStorage so real name/email appear
   useEffect(() => {
-    try {
-      const userData = localStorage.getItem('user')
-      if (!userData) return
-
-      const user = JSON.parse(userData)
-      const name = user.name || ''
-      const email = user.email || user.username || ''
-
-      setProfileData((prev) => ({
-        ...prev,
-        name,
-        email,
-      }))
-    } catch {
-      // If parsing fails, keep defaults
+    const userRaw = localStorage.getItem('user')
+    if (!userRaw) {
+      router.push('/login')
+      return
     }
-  }, [])
 
-  // Load pharmacy template subscription info (if any) from localStorage (user-scoped)
-  useEffect(() => {
     try {
-      const templateIdRaw = getScopedItem('selectedTemplate')
-      const priceRaw = getScopedItem('totalPrice')
-      const startedRaw = getScopedItem('templateSubscriptionStartedAt')
+      const user = JSON.parse(userRaw)
+      const businessType = (user.businessType || user.business_type || 'hospital') as 'hospital' | 'pharmacy'
 
-      if (!templateIdRaw || !priceRaw || !startedRaw) {
-        setSubscriptionPlan(null)
-        return
-      }
-
-      const templateId = Number(templateIdRaw)
-      const price = Number(priceRaw)
-      const startedDate = new Date(startedRaw)
-      if (Number.isNaN(startedDate.getTime())) {
-        setSubscriptionPlan(null)
-        return
-      }
-
-      // One-month renewal period
-      const renewDate = new Date(startedDate)
-      renewDate.setMonth(renewDate.getMonth() + 1)
-
-      const formatDate = (d: Date) =>
-        d.toLocaleDateString(undefined, {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        })
-
-      const templateName =
-        templateId === 1
-          ? 'Modern Pharmacy'
-          : templateId === 2
-          ? 'Classic Pharmacy'
-          : templateId === 3
-          ? 'Minimal Pharmacy'
-          : `Template #${templateId}`
-
-      setSubscriptionPlan({
-        templateName,
-        price,
-        startedAt: formatDate(startedDate),
-        renewAt: formatDate(renewDate),
+      setUserProfile({
+        name: user.name || '',
+        email: user.email || '',
+        businessType,
       })
-    } catch {
-      setSubscriptionPlan(null)
-    }
-  }, [])
+      setDeleteAccountEmail(user.email || '')
 
-  const handleProfileSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    // Handle profile update
-    console.log('Profile updated:', profileData)
+      if (businessType === 'pharmacy') {
+        pharmacyApi.getProfile().then((res) => {
+          setSelectedTemplateId(res.data?.template_id || null)
+          setIsPublished(Boolean(res.data?.is_published))
+          if (res.error) {
+            showToast({ type: 'error', title: 'Could not load pharmacy settings', message: res.error })
+          }
+          setIsLoading(false)
+        })
+      } else {
+        setIsLoading(false)
+      }
+    } catch {
+      router.push('/dashboard')
+    }
+  }, [router, showToast])
+
+  const selectedTemplate = useMemo(() => getTemplateById(selectedTemplateId), [selectedTemplateId])
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return
+    setIsLoggingOut(true)
+
+    const logoutError = await logoutUser()
+    if (logoutError) {
+      showToast({
+        type: 'info',
+        title: 'Signed out locally',
+        message: 'Server logout failed, but your local session was cleared.',
+      })
+    }
+
+    router.push('/login')
+    router.refresh()
+    setIsLoggingOut(false)
   }
 
-  const handleLogout = () => {
-    // Handle logout
-    window.location.href = '/login'
+  const openDeleteAccountModal = () => {
+    setDeleteAccountEmail(userProfile.email)
+    setDeleteAccountPassword('')
+    setDeleteAccountConfirmation('')
+    setDeleteAccountError('')
+    setIsDeleteAccountModalOpen(true)
+  }
+
+  const handleDeleteAccount = async () => {
+    setDeleteAccountError('')
+
+    if (deleteAccountEmail.trim().toLowerCase() !== userProfile.email.toLowerCase()) {
+      setDeleteAccountError('Please enter your current account email exactly.')
+      return
+    }
+
+    if (deleteAccountConfirmation.trim().toUpperCase() !== 'DELETE') {
+      setDeleteAccountError('Type DELETE to confirm account removal.')
+      return
+    }
+
+    if (!deleteAccountPassword) {
+      setDeleteAccountError('Password is required to delete your account.')
+      return
+    }
+
+    setIsDeletingAccount(true)
+
+    const response = await authApi.deleteAccount({
+      email: deleteAccountEmail.trim(),
+      password: deleteAccountPassword,
+      confirmation_text: deleteAccountConfirmation.trim(),
+    })
+
+    if (response.error) {
+      setDeleteAccountError(response.error)
+      setIsDeletingAccount(false)
+      return
+    }
+
+    clearAuthSession()
+    showToast({
+      type: 'success',
+      title: 'Account deleted',
+      message: 'Your account and associated data were permanently removed.',
+    })
+
+    setIsDeletingAccount(false)
+    setIsDeleteAccountModalOpen(false)
+    router.replace('/signup')
+    router.refresh()
+  }
+
+  const handleDeleteWebsite = async () => {
+    const confirmed = window.confirm('Delete your pharmacy website and all products? This action cannot be undone.')
+    if (!confirmed) return
+
+    const response = await pharmacyApi.deleteWebsite()
+    if (response.error) {
+      showToast({ type: 'error', title: 'Delete failed', message: response.error })
+      return
+    }
+
+    showToast({ type: 'success', title: 'Website deleted', message: 'Your pharmacy website data has been removed.' })
+    removePublicSiteItem('businessInfo')
+    removePublicSiteItem('pharmacySetup')
+    removePublicSiteItem('selectedTemplate')
+    removePublicSiteItem('templateSubscriptionStartedAt')
+    removePublicSiteItem('totalPrice')
+    removePublicSiteItem('isPublished')
+    router.push('/dashboard/pharmacy/setup')
+  }
+
+  const handleRepublish = async () => {
+    const publishRes = await pharmacyApi.publish()
+    if (publishRes.error) {
+      showToast({ type: 'error', title: 'Publish failed', message: publishRes.error })
+      return
+    }
+
+    setIsPublished(true)
+    setPublicSiteItem('isPublished', 'true')
+    showToast({ type: 'success', title: 'Website published', message: 'Your pharmacy website is now live.' })
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-neutral-dark mb-2">Settings</h1>
-        <p className="text-neutral-gray">Manage your account and website settings</p>
+        <h1 className="text-3xl font-bold text-neutral-dark">Settings</h1>
+        <p className="text-neutral-gray mt-1">Manage account preferences and website lifecycle controls.</p>
       </div>
 
-      {/* Profile Settings */}
       <Card className="p-6">
-        <h2 className="text-xl font-semibold text-neutral-dark mb-6">Profile Settings</h2>
-        <form onSubmit={handleProfileSubmit} className="space-y-4">
-          <Input
-            label="Full Name"
-            value={profileData.name}
-            onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
-          />
-          <Input
-            label="Email"
-            type="email"
-            value={profileData.email}
-            onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-          />
-        </form>
-      </Card>
-
-      {/* Subscription Plan */}
-      <Card className="p-6">
-        <h2 className="text-xl font-semibold text-neutral-dark mb-6">Subscription Plan</h2>
-        <div className="space-y-4">
-          {subscriptionPlan ? (
-            <>
-              <div className="flex items-center justify-between p-4 bg-neutral-light rounded-lg">
-                <div>
-                  <h3 className="font-semibold text-neutral-dark">
-                    {subscriptionPlan.templateName}
-                  </h3>
-                  <p className="text-sm text-neutral-gray">
-                    ${subscriptionPlan.price.toFixed(2)} / month
-                  </p>
-                </div>
-              </div>
-              <div className="text-sm text-neutral-gray">
-                <p>Subscribed on: {subscriptionPlan.startedAt}</p>
-                <p>Next renewal date: {subscriptionPlan.renewAt}</p>
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-neutral-gray">
-              You don&apos;t have an active pharmacy template subscription yet. Choose a template
-              from the Pharmacy Templates page.
-            </p>
-          )}
-        </div>
-      </Card>
-
-      {/* Danger Zone */}
-      <Card className="p-6 border-2 border-error">
-        <h2 className="text-xl font-semibold text-error mb-6">Danger Zone</h2>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-neutral-dark">Logout</h3>
-              <p className="text-sm text-neutral-gray">Sign out of your account</p>
-            </div>
-            <Button variant="secondary" onClick={handleLogout}>
-              <FiLogOut className="mr-2" />
-              Logout
-            </Button>
+        <h2 className="text-xl font-semibold text-neutral-dark">Profile</h2>
+        {isLoading ? (
+          <div className="mt-4 space-y-2">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
           </div>
-          <div className="border-t border-neutral-border pt-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-error">Delete Account</h3>
-                <p className="text-sm text-neutral-gray">
-                  Permanently delete your account and all data
-                </p>
+        ) : (
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Input label="Full Name" value={userProfile.name} readOnly />
+            <Input label="Email" value={userProfile.email} readOnly />
+          </div>
+        )}
+      </Card>
+
+      {userProfile.businessType === 'pharmacy' ? (
+        <>
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold text-neutral-dark">Website Settings</h2>
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-neutral-border p-4">
+                <div className="text-sm text-neutral-gray">Current template</div>
+                <div className="mt-1 text-lg font-semibold text-neutral-dark">
+                  {selectedTemplate?.name || 'No template selected'}
+                </div>
+                <Link href="/dashboard/pharmacy/templates" className="mt-3 inline-flex items-center text-sm text-primary">
+                  Change template
+                </Link>
               </div>
-              <Button variant="secondary" className="border-error text-error hover:bg-error hover:text-white">
-                Delete Account
+
+              <div className="rounded-lg border border-neutral-border p-4">
+                <div className="text-sm text-neutral-gray">Publication status</div>
+                <div className="mt-1 text-lg font-semibold text-neutral-dark">{isPublished ? 'Published' : 'Draft'}</div>
+                {!isPublished ? (
+                  <button type="button" className="mt-3 text-sm text-primary" onClick={handleRepublish}>
+                    Publish website
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link href="/dashboard/pharmacy/customize">
+                <Button variant="secondary">
+                  <FiInfo className="mr-2" /> Edit business info
+                </Button>
+              </Link>
+              <Link href="/dashboard/pharmacy/preview">
+                <Button variant="secondary">
+                  <FiGlobe className="mr-2" /> Preview website
+                </Button>
+              </Link>
+            </div>
+          </Card>
+
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold text-neutral-dark">Payment Methods</h2>
+            <p className="mt-1 text-sm text-neutral-gray">
+              Simulate payment method updates for Visa and Fawry from the payment modal.
+            </p>
+            <div className="mt-4">
+              <Button onClick={() => setPaymentOpen(true)}>Manage Payment Method</Button>
+            </div>
+          </Card>
+
+          <Card className="border-2 border-error p-6">
+            <h2 className="text-xl font-semibold text-error">Danger Zone</h2>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="font-semibold text-neutral-dark">Delete Website</div>
+                <p className="text-sm text-neutral-gray">Remove pharmacy website profile, products, and business info.</p>
+              </div>
+              <Button className="bg-error hover:bg-red-600" onClick={handleDeleteWebsite}>
+                <FiTrash2 className="mr-2" /> Delete Website
               </Button>
             </div>
-          </div>
+          </Card>
+        </>
+      ) : null}
+
+      <Card className="p-6">
+        <h2 className="text-xl font-semibold text-neutral-dark">Session</h2>
+        <div className="mt-4 flex justify-between">
+          <p className="text-sm text-neutral-gray">Sign out from the current account.</p>
+          <Button variant="secondary" onClick={handleLogout} disabled={isLoggingOut}>
+            <FiLogOut className="mr-2" /> {isLoggingOut ? 'Logging out...' : 'Logout'}
+          </Button>
         </div>
       </Card>
+
+      <Card className="border-2 border-error p-6">
+        <h2 className="text-xl font-semibold text-error">Account Danger Zone</h2>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="font-semibold text-neutral-dark">Delete Account</div>
+            <p className="text-sm text-neutral-gray">Permanently remove your account and all connected Medify data.</p>
+          </div>
+          <Button className="bg-error hover:bg-red-600" onClick={openDeleteAccountModal}>
+            <FiAlertTriangle className="mr-2" /> Delete Account
+          </Button>
+        </div>
+      </Card>
+
+      <PaymentModal
+        isOpen={paymentOpen}
+        onClose={() => setPaymentOpen(false)}
+        amount={selectedTemplate?.price || 0}
+        description="Update payment details for your active pharmacy template"
+        onPaymentSuccess={() => {
+          setPaymentOpen(false)
+          showToast({
+            type: 'success',
+            title: 'Payment details updated',
+            message: 'Visa/Fawry details were updated successfully in demo mode.',
+          })
+        }}
+      />
+
+      <Modal
+        isOpen={isDeleteAccountModalOpen}
+        onClose={() => {
+          if (isDeletingAccount) return
+          setIsDeleteAccountModalOpen(false)
+        }}
+        title="Delete Account"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-neutral-gray">
+            This action is permanent. To continue, confirm your email, type DELETE, and enter your password.
+          </p>
+
+          <Input
+            label="Account email"
+            type="email"
+            value={deleteAccountEmail}
+            onChange={(event) => setDeleteAccountEmail(event.target.value)}
+            placeholder="you@example.com"
+            disabled={isDeletingAccount}
+          />
+
+          <Input
+            label="Type DELETE"
+            value={deleteAccountConfirmation}
+            onChange={(event) => setDeleteAccountConfirmation(event.target.value)}
+            placeholder="DELETE"
+            disabled={isDeletingAccount}
+          />
+
+          <Input
+            label="Password"
+            type="password"
+            value={deleteAccountPassword}
+            onChange={(event) => setDeleteAccountPassword(event.target.value)}
+            placeholder="Enter your current password"
+            disabled={isDeletingAccount}
+          />
+
+          {deleteAccountError ? <p className="text-sm text-error">{deleteAccountError}</p> : null}
+
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
+            <Button
+              variant="secondary"
+              onClick={() => setIsDeleteAccountModalOpen(false)}
+              disabled={isDeletingAccount}
+            >
+              Cancel
+            </Button>
+            <Button className="bg-error hover:bg-red-600" onClick={handleDeleteAccount} disabled={isDeletingAccount}>
+              {isDeletingAccount ? 'Deleting...' : 'Permanently Delete Account'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
-

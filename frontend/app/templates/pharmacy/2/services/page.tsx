@@ -6,7 +6,8 @@ import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { FiArrowLeft, FiClock, FiMapPin, FiPhoneCall, FiShield } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
-import { getSiteItem } from '@/lib/storage'
+import { BrandLogo } from '@/components/pharmacy/BrandLogo'
+import { getSiteItem, setSiteOwnerId } from '@/lib/storage'
 
 type PharmacySetup = { phone?: string; address?: string }
 type BusinessInfo = { name?: string; logo?: string; contactPhone?: string; address?: string; workingHours?: Record<string, { open?: string; close?: string; closed?: boolean }> }
@@ -23,12 +24,16 @@ function safeJsonParse<T>(value: string | null): T | null {
 function ServicesContent() {
   const searchParams = useSearchParams()
   const isDemo = searchParams?.get('demo') === '1' || searchParams?.get('demo') === 'true'
+  const ownerId = searchParams?.get('owner') || ''
 
   const withDemo = (path: string) => {
-    if (!isDemo) return path
     const [base, hash] = path.split('#')
-    const sep = base.includes('?') ? '&' : '?'
-    return `${base}${sep}demo=1${hash ? `#${hash}` : ''}`
+    const [pathname, query = ''] = base.split('?')
+    const params = new URLSearchParams(query)
+    if (isDemo) params.set('demo', '1')
+    if (ownerId) params.set('owner', ownerId)
+    const nextQuery = params.toString()
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash ? `#${hash}` : ''}`
   }
 
   const [brand, setBrand] = useState<{ name: string; logo: string | null; phone: string; address: string; openHours: string }>({
@@ -40,6 +45,9 @@ function ServicesContent() {
   })
 
   useEffect(() => {
+    if (ownerId) {
+      setSiteOwnerId(ownerId)
+    }
     if (isDemo) return
     const businessInfo = safeJsonParse<BusinessInfo>(getSiteItem('businessInfo'))
     const setup = safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup'))
@@ -54,7 +62,7 @@ function ServicesContent() {
       address: businessInfo?.address || setup?.address || '',
       openHours,
     })
-  }, [isDemo])
+  }, [isDemo, ownerId])
 
   const services = useMemo(
     () => [
@@ -102,16 +110,14 @@ function ServicesContent() {
             <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center overflow-hidden border border-amber-300 shadow-sm">
               {isDemo ? (
                 <Image src="/mod logo.png" alt="Logo" width={44} height={44} className="object-cover" />
-              ) : brand.logo ? (
-                brand.logo.startsWith('data:') ? (
-                  <img src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} className="w-full h-full object-cover" />
-                ) : (
-                  <Image src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} width={44} height={44} className="object-cover" />
-                )
               ) : (
-                <div className="w-full h-full bg-[#7a5c2e] flex items-center justify-center text-white font-bold text-xs">
-                  {(brand.name || 'P').charAt(0).toUpperCase()}
-                </div>
+                <BrandLogo
+                  src={brand.logo}
+                  alt={`${brand.name || 'Pharmacy'} logo`}
+                  fallbackText={brand.name || 'P'}
+                  imageClassName="w-full h-full object-cover"
+                  fallbackClassName="w-full h-full bg-[#7a5c2e] flex items-center justify-center text-white font-bold text-xs"
+                />
               )}
             </div>
             <div className="leading-tight">

@@ -4,7 +4,10 @@ import Link from 'next/link'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import React, { Suspense, useEffect, useState, useMemo } from 'react'
 import { FiArrowLeft, FiMinus, FiPlus, FiShoppingCart, FiPackage } from 'react-icons/fi'
-import { getSiteItem, setSiteItem } from '@/lib/storage'
+import { BrandLogo } from '@/components/pharmacy/BrandLogo'
+import { ProductImage } from '@/components/pharmacy/ProductImage'
+import { normalizeRenderableProductImageUrl } from '@/lib/productImage'
+import { getSiteItem, setSiteItem, setSiteOwnerId } from '@/lib/storage'
 
 type Product = {
   id: string
@@ -14,6 +17,7 @@ type Product = {
   price: string
   inStock: boolean
   stock?: number
+  imageUrl?: string
 }
 
 type CartItem = { product: Product; quantity: number }
@@ -38,6 +42,7 @@ function ProductDetailsContent() {
   const router = useRouter()
   const productId = params?.id as string
   const isDemo = searchParams?.get('demo') === '1'
+  const ownerId = searchParams?.get('owner') || ''
   const cartKey = isDemo ? 'pharmacy3_cart_demo' : 'pharmacy3_cart'
 
   const [product, setProduct] = useState<Product | null>(null)
@@ -45,13 +50,24 @@ function ProductDetailsContent() {
   const [isLoading, setIsLoading] = useState(true)
   const [quantity, setQuantity] = useState(1)
   const [cart, setCart] = useState<CartItem[]>([])
+  const [addedFeedback, setAddedFeedback] = useState(false)
+  const [cartWarning, setCartWarning] = useState('')
 
   const withDemo = (path: string) => {
-    if (!isDemo) return path
     const [base, hash] = path.split('#')
-    const sep = base.includes('?') ? '&' : '?'
-    return `${base}${sep}demo=1${hash ? `#${hash}` : ''}`
+    const [pathname, query = ''] = base.split('?')
+    const params = new URLSearchParams(query)
+    if (isDemo) params.set('demo', '1')
+    if (ownerId) params.set('owner', ownerId)
+    const nextQuery = params.toString()
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash ? `#${hash}` : ''}`
   }
+
+  useEffect(() => {
+    if (ownerId) {
+      setSiteOwnerId(ownerId)
+    }
+  }, [ownerId])
 
   // Load business info
   useEffect(() => {
@@ -96,27 +112,28 @@ function ProductDetailsContent() {
               price: `$${parseFloat(p.price || 0).toFixed(2)}`,
               stock: typeof p.stock === 'number' ? p.stock : 0,
               inStock: typeof p.stock === 'number' ? p.stock > 0 : false,
+              imageUrl: normalizeRenderableProductImageUrl(p.image_url_resolved || p.image_url || ''),
             })
             setIsLoading(false)
             return
           }
         }
 
+        // Fallback to cached catalog (set by medications page)
+        const cachedCatalog = safeJsonParse<Product[]>(getSiteItem('template3ProductsCache')) || []
+        const cachedProduct = cachedCatalog.find((item) => String(item.id) === String(productId))
+        if (cachedProduct) {
+          setProduct(cachedProduct)
+          setIsLoading(false)
+          return
+        }
+
         // Fallback to localStorage
         const setup = safeJsonParse<any>(getSiteItem('pharmacySetup'))
         const products = setup?.products || []
-        console.log('📦 Products in localStorage:', products.length)
         const foundProduct = products.find((_: any, idx: number) => `user-${idx}` === productId)
         
         if (foundProduct) {
-          console.log('📦 Found product:', {
-            name: foundProduct.name,
-            rawStock: foundProduct.stock,
-            stockType: typeof foundProduct.stock,
-            category: foundProduct.category,
-            description: foundProduct.description?.substring(0, 50)
-          })
-
           // Parse stock correctly - it might be a number or string
           let stockValue = 0
           if (foundProduct.stock !== undefined && foundProduct.stock !== null) {
@@ -125,7 +142,6 @@ function ProductDetailsContent() {
               : parseInt(String(foundProduct.stock), 10)
             stockValue = isNaN(parsed) ? 0 : Math.max(0, parsed)
           }
-          console.log('📦 Parsed stock value:', stockValue)
 
           // Ensure price is formatted
           let priceFormatted = foundProduct.price || '$0.00'
@@ -142,9 +158,8 @@ function ProductDetailsContent() {
             price: priceFormatted,
             stock: stockValue,
             inStock: stockValue > 0,
+            imageUrl: normalizeRenderableProductImageUrl(foundProduct.imageUrl || foundProduct.image_url || ''),
           })
-        } else {
-          console.log('❌ Product not found with ID:', productId)
         }
       } catch (error) {
         console.error('Failed to load product:', error)
@@ -165,13 +180,14 @@ function ProductDetailsContent() {
 
   const addToCart = () => {
     if (!product || product.stock === 0) return
+    setCartWarning('')
 
     const maxStock = product.stock || 0
     const currentInCart = cart.find(item => item.product.id === product.id)?.quantity || 0
     const canAdd = currentInCart + quantity <= maxStock
 
     if (!canAdd) {
-      alert(`Only ${maxStock} units available. You already have ${currentInCart} in cart.`)
+      setCartWarning(`Only ${maxStock} units available. You already have ${currentInCart} in cart.`)
       return
     }
 
@@ -191,18 +207,21 @@ function ProductDetailsContent() {
       return updated
     })
 
-    alert(`Added ${quantity} ${quantity === 1 ? 'unit' : 'units'} to cart!`)
+    setAddedFeedback(true)
+    window.setTimeout(() => setAddedFeedback(false), 1800)
     setQuantity(1)
   }
 
   const incrementQuantity = () => {
     if (product && product.stock && quantity < product.stock) {
+      setCartWarning('')
       setQuantity(quantity + 1)
     }
   }
 
   const decrementQuantity = () => {
     if (quantity > 1) {
+      setCartWarning('')
       setQuantity(quantity - 1)
     }
   }
@@ -251,17 +270,13 @@ function ProductDetailsContent() {
         <div className="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between gap-3">
           <Link href={withDemo('/templates/pharmacy/3')} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
             <div className="w-10 h-10 rounded-lg overflow-hidden border-2 border-gray-200 shadow-sm bg-white flex items-center justify-center">
-              {businessInfo?.logo && businessInfo.logo.trim() !== '' ? (
-                <img 
-                  src={businessInfo.logo} 
-                  alt={`${businessInfo.name || 'Pharmacy'} Logo`}
-                  className="w-full h-full object-contain p-1"
-                />
-              ) : (
-                <div className="w-full h-full bg-neutral-dark text-white flex items-center justify-center text-sm font-bold">
-                  {((businessInfo?.name || 'P').charAt(0).toUpperCase())}
-                </div>
-              )}
+              <BrandLogo
+                src={businessInfo?.logo || null}
+                alt={`${businessInfo?.name || 'Pharmacy'} Logo`}
+                fallbackText={businessInfo?.name || 'P'}
+                imageClassName="w-full h-full object-contain p-1"
+                fallbackClassName="w-full h-full bg-neutral-dark text-white flex items-center justify-center text-sm font-bold"
+              />
             </div>
             <span className="text-lg font-bold text-neutral-dark">
               {businessInfo?.name || 'Minimal Pharmacy'}
@@ -293,12 +308,15 @@ function ProductDetailsContent() {
         </Link>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Product Image Placeholder */}
-          <div className="bg-white rounded-2xl border border-neutral-border p-8 flex items-center justify-center shadow-sm">
-            <div className="text-center">
-              <FiPackage size={120} className="mx-auto text-gray-300 mb-4" />
-              <p className="text-gray-500">Product Image</p>
-            </div>
+          <div className="bg-white rounded-2xl border border-neutral-border p-8 flex items-center justify-center shadow-sm overflow-hidden min-h-[360px]">
+            <ProductImage
+              src={product.imageUrl}
+              alt={product.name}
+              className="w-full h-full max-h-[460px] object-contain"
+              fallbackClassName="grid h-full w-full place-items-center bg-white text-gray-400"
+              fallbackLabel={product.category || 'No product image'}
+              loading="eager"
+            />
           </div>
 
           {/* Product Info */}
@@ -358,6 +376,7 @@ function ProductDetailsContent() {
                     onChange={(e) => {
                       const val = parseInt(e.target.value) || 1
                       const max = product.stock || 1
+                      setCartWarning('')
                       setQuantity(Math.max(1, Math.min(val, max)))
                     }}
                     className="w-20 h-12 text-center text-xl font-bold border-2 border-neutral-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
@@ -385,6 +404,8 @@ function ProductDetailsContent() {
                   <FiShoppingCart size={20} />
                   Add to Cart
                 </button>
+                {addedFeedback ? <p className="text-sm text-success text-center">Added to cart.</p> : null}
+                {cartWarning ? <p className="text-sm text-error text-center">{cartWarning}</p> : null}
               </div>
             )}
 

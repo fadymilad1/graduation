@@ -120,12 +120,17 @@ POST /api/pharmacy/products/bulk_upload/
     {
       "name": "Aspirin 100mg",
       "category": "Pain Relief",
-      "price": 15.00
+      "description": "Low-dose aspirin",
+      "price": 15.00,
+      "stock": 30,
+      "image_url": "https://placehold.co/600x400/png?text=Aspirin"
     },
     {
       "name": "Amoxicillin 500mg",
       "category": "Antibiotics",
-      "price": 120.00
+      "description": "Prescription antibiotic",
+      "price": 120.00,
+      "stock": 15
     }
   ]
 }
@@ -312,7 +317,7 @@ python manage.py createsuperuser
    - Product management page
    - Product catalog display
    - CSV upload component
-3. Add image field to Product model (optional)
+3. Improve image handling (compression/CDN and moderation)
 4. Add inventory management features
 
 ---

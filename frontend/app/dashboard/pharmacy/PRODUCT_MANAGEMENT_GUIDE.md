@@ -40,15 +40,17 @@
 
 1. Prepare a CSV file with this format:
    ```csv
-   name,category,description,price,stock
-   Paracetamol 500mg,Pain Relief,For fever and pain,4.99,50
-   Vitamin C 1000mg,Supplements,Immune support,9.99,30
+  Product Name,Category,Price,Stock Quantity,Description,Image
+  Paracetamol 500mg,Pain Relief,4.99,50,For fever and pain,https://placehold.co/600x400/png?text=Paracetamol
+  Vitamin C 1000mg,Supplements,9.99,30,Immune support,
    ```
 
 2. Click **"Import products (CSV)"** file upload area
 3. Select your CSV file
 4. Products are automatically:
    - ✅ Parsed and validated
+  - ✅ Image aliases accepted (`Image`, `image_url`, `Image Link`)
+  - ✅ Invalid image URLs ignored without failing valid rows
    - ✅ Uploaded to backend via bulk endpoint
    - ✅ Saved to database
    - ✅ Displayed in the form
@@ -221,7 +223,8 @@ Body: {
 
 ### Problem: CSV import fails
 **Solution:**
-- Verify CSV format matches: `name,category,description,price,stock`
+- Verify CSV format matches required columns: `Product Name,Category,Price,Stock Quantity,Description`
+- Optional image column can be `Image`, `image_url`, or `Image Link`
 - Ensure no extra commas or special characters
 - Check file encoding is UTF-8
 
@@ -236,22 +239,23 @@ Body: {
 ## 📝 CSV Format Reference
 
 ### Required Columns:
-- `name` - Product name (required)
-- `category` - Category name (required)
-- `price` - Numeric price without currency symbol (required)
+- `Product Name` (or `name`) - Product name
+- `Category` (or `category`) - Category name
+- `Price` (or `price`) - Numeric price without currency symbol
+- `Stock Quantity` (or `stock`) - Non-negative integer stock value
+- `Description` (or `description`) - Column is required; value may be blank
 
 ### Optional Columns:
-- `description` - Product description
-- `stock` - Stock quantity (defaults to 0)
+- `Image` / `image_url` / `Image Link` - Product image URL (`http`/`https` only)
 
 ### Example CSV:
 ```csv
-name,category,description,price,stock
-Paracetamol 500mg Tablets,Pain Relief,Effective relief from mild to moderate pain,4.99,40
-Ibuprofen 200mg Capsules,Pain Relief,Anti-inflammatory pain reliever,6.49,35
-Amoxicillin 500mg,Prescription Antibiotics,Broad-spectrum antibiotic,18.90,20
-Vitamin C 1000mg,Vitamins & Supplements,Immune support tablets,9.99,30
-Omeprazole 20mg,Stomach & Digestion,Reduces stomach acid,11.75,18
+Product Name,Category,Price,Stock Quantity,Description,Image
+Paracetamol 500mg Tablets,Pain Relief,4.99,40,Effective relief from mild to moderate pain,https://placehold.co/600x400/png?text=Paracetamol
+Ibuprofen 200mg Capsules,Pain Relief,6.49,35,Anti-inflammatory pain reliever,https://placehold.co/600x400/png?text=Ibuprofen
+Amoxicillin 500mg,Prescription Antibiotics,18.90,20,Broad-spectrum antibiotic,
+Vitamin C 1000mg,Vitamins & Supplements,9.99,30,Immune support tablets,https://placehold.co/600x400/png?text=Vitamin+C
+Omeprazole 20mg,Stomach & Digestion,11.75,18,Reduces stomach acid,https://placehold.co/600x400/png?text=Omeprazole
 ```
 
 ---
@@ -266,7 +270,7 @@ Omeprazole 20mg,Stomach & Digestion,Reduces stomach acid,11.75,18
 5. Products appear on your live pharmacy template
 
 ### For Developers:
-- **Add product images** (upload to backend)
+- **Enhance product image handling** (compression/CDN optimization)
 - **Add search/filter** on product list
 - **Add barcode scanning** for quick product addition
 - **Add low stock alerts**

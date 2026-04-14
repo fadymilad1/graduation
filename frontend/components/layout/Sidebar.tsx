@@ -1,13 +1,14 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   FiHome,
   FiGlobe,
   FiLayout,
+  FiPackage,
+  FiSliders,
   FiInfo,
   FiMessageSquare,
   FiSettings,
@@ -15,6 +16,10 @@ import {
   FiX,
   FiShoppingCart,
 } from 'react-icons/fi'
+import { BrandLogo } from '@/components/pharmacy/BrandLogo'
+import { logoutUser } from '@/lib/auth'
+import { getOwnerUnseenPharmacyOrdersCount } from '@/lib/pharmacyOrders'
+import { getScopedItem, normalizeLogoUrl } from '@/lib/storage'
 
 interface SidebarItem {
   label: string
@@ -32,31 +37,117 @@ export const Sidebar: React.FC<SidebarProps> = ({ userType, isOpen = true, onClo
   const pathname = usePathname()
   const router = useRouter()
   const [currentUserType, setCurrentUserType] = useState<'hospital' | 'pharmacy'>('hospital')
+  const [brandName, setBrandName] = useState('Medify')
+  const [brandLogo, setBrandLogo] = useState<string | null>(null)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [unseenOrdersCount, setUnseenOrdersCount] = useState(0)
 
   useEffect(() => {
-    // Get user type from localStorage (same method as dashboard)
+    let resolvedUserType: 'hospital' | 'pharmacy' = userType || 'hospital'
+    let resolvedBrandName = 'Medify'
+    let resolvedBrandLogo: string | null = null
+
+    // Get user context from localStorage (same method as dashboard)
     const userData = localStorage.getItem('user')
     if (userData) {
       try {
-        const user = JSON.parse(userData)
-        setCurrentUserType(user.businessType || user.business_type || 'hospital')
+        const user = JSON.parse(userData) as {
+          name?: string
+          businessType?: 'hospital' | 'pharmacy'
+          business_type?: 'hospital' | 'pharmacy'
+          logo?: string
+          logo_url?: string
+        }
+        resolvedUserType = user.businessType || user.business_type || 'hospital'
+
+        if (resolvedUserType === 'pharmacy') {
+          resolvedBrandName = user.name || 'Medify'
+          resolvedBrandLogo = normalizeLogoUrl(user.logo_url || user.logo)
+        }
       } catch (e) {
         // Fallback to hospital if parsing fails
-        setCurrentUserType('hospital')
+        resolvedUserType = 'hospital'
       }
     } else if (userType) {
       // Use prop if provided
-      setCurrentUserType(userType)
+      resolvedUserType = userType
     }
-  }, [userType])
 
-  const handleLogout = () => {
-    localStorage.removeItem('isLoggedIn')
-    localStorage.removeItem('user')
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    localStorage.removeItem('website_setup_id')
+    if (resolvedUserType === 'pharmacy') {
+      const businessInfoRaw = getScopedItem('businessInfo')
+      if (businessInfoRaw) {
+        try {
+          const businessInfo = JSON.parse(businessInfoRaw) as {
+            name?: string
+            logo?: string
+            logo_url?: string
+          }
+
+          if (businessInfo.name?.trim()) {
+            resolvedBrandName = businessInfo.name.trim()
+          }
+
+          const businessLogo = normalizeLogoUrl(businessInfo.logo || businessInfo.logo_url)
+          if (businessLogo) {
+            resolvedBrandLogo = businessLogo
+          }
+        } catch {
+          // Ignore malformed local business info payload
+        }
+      }
+    }
+
+    setCurrentUserType(resolvedUserType)
+    setBrandName(resolvedBrandName)
+    setBrandLogo(resolvedBrandLogo)
+  }, [userType, pathname])
+
+  const loadUnseenOrdersCount = useCallback(async () => {
+    if (currentUserType !== 'pharmacy') {
+      setUnseenOrdersCount(0)
+      return
+    }
+
+    const response = await getOwnerUnseenPharmacyOrdersCount()
+    if (response.data !== undefined) {
+      setUnseenOrdersCount(response.data)
+    }
+  }, [currentUserType])
+
+  useEffect(() => {
+    void loadUnseenOrdersCount()
+  }, [loadUnseenOrdersCount])
+
+  useEffect(() => {
+    if (currentUserType !== 'pharmacy') return
+
+    const intervalId = window.setInterval(() => {
+      void loadUnseenOrdersCount()
+    }, 8000)
+
+    return () => window.clearInterval(intervalId)
+  }, [currentUserType, loadUnseenOrdersCount])
+
+  useEffect(() => {
+    const handleUnseenOrdersEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<{ count?: number }>
+      const nextCount = Number(customEvent.detail?.count ?? 0)
+      setUnseenOrdersCount(Number.isFinite(nextCount) ? Math.max(0, nextCount) : 0)
+    }
+
+    window.addEventListener('pharmacy-unseen-orders-count', handleUnseenOrdersEvent as EventListener)
+    return () => {
+      window.removeEventListener('pharmacy-unseen-orders-count', handleUnseenOrdersEvent as EventListener)
+    }
+  }, [])
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return
+    setIsLoggingOut(true)
+    await logoutUser()
     router.push('/login')
+    router.refresh()
+    setIsLoggingOut(false)
   }
 
   const menuItems: SidebarItem[] = [
@@ -64,10 +155,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ userType, isOpen = true, onClo
     { 
       label: 'My Website', 
       icon: <FiGlobe />, 
-      href: currentUserType === 'pharmacy' ? '/dashboard/pharmacy/setup' : '/dashboard/hospital/setup' 
+      href: currentUserType === 'pharmacy' ? '/dashboard/pharmacy' : '/dashboard/hospital/setup' 
     },
     ...(currentUserType === 'pharmacy'
-      ? [{ label: 'Templates', icon: <FiLayout />, href: '/dashboard/pharmacy/templates' }]
+      ? [
+          { label: 'Create Website', icon: <FiLayout />, href: '/dashboard/pharmacy/setup' },
+          { label: 'Customize', icon: <FiSliders />, href: '/dashboard/pharmacy/customize' },
+          { label: 'Products', icon: <FiPackage />, href: '/dashboard/pharmacy/products' },
+          { label: 'Templates', icon: <FiLayout />, href: '/dashboard/pharmacy/templates' },
+          { label: 'Preview', icon: <FiGlobe />, href: '/dashboard/pharmacy/preview' },
+        ]
       : []),
     { label: 'Business Info', icon: <FiInfo />, href: '/dashboard/business-info' },
     {
@@ -95,17 +192,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ userType, isOpen = true, onClo
       } md:translate-x-0`}>
         <div className="p-4 sm:p-6 border-b border-neutral-border flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 sm:gap-3" onClick={onClose}>
-            <div className="relative h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0">
-              <Image
-                src="/mod logo.png"
-                alt="Medify logo"
-                fill
-                className="object-contain"
-                sizes="40px"
-                priority
+            <div className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 rounded-full overflow-hidden border border-primary/20 bg-white">
+              <BrandLogo
+                src={brandLogo || '/mod logo.png'}
+                alt={`${brandName} logo`}
+                fallbackText={brandName}
+                imageClassName="h-full w-full object-cover"
+                fallbackClassName="h-full w-full bg-primary flex items-center justify-center text-white font-semibold text-sm"
               />
             </div>
-            <span className="text-xl sm:text-2xl font-bold text-primary">Medify</span>
+            <span className="text-xl sm:text-2xl font-bold text-primary">{brandName}</span>
           </Link>
           <button
             onClick={onClose}
@@ -120,7 +216,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ userType, isOpen = true, onClo
           <Link
             key={item.href}
             href={item.href}
-            onClick={onClose}
+            onClick={() => {
+              if (item.href === '/dashboard/orders') {
+                setUnseenOrdersCount(0)
+                window.dispatchEvent(
+                  new CustomEvent('pharmacy-unseen-orders-count', {
+                    detail: { count: 0 },
+                  }),
+                )
+              }
+              onClose?.()
+            }}
             className={`flex items-center gap-3 px-4 py-3 rounded-lg mb-2 transition-colors ${
               isActive(item.href)
                 ? 'bg-primary-light text-primary font-medium'
@@ -129,16 +235,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ userType, isOpen = true, onClo
           >
             {item.icon}
             <span className="text-sm sm:text-base">{item.label}</span>
+            {item.href === '/dashboard/orders' && currentUserType === 'pharmacy' && unseenOrdersCount > 0 ? (
+              <span className="ml-auto inline-flex min-w-[20px] h-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-semibold text-white">
+                {unseenOrdersCount > 99 ? '99+' : unseenOrdersCount}
+              </span>
+            ) : null}
           </Link>
         ))}
       </nav>
       <div className="p-4 border-t border-neutral-border">
         <button 
           onClick={handleLogout}
+          disabled={isLoggingOut}
           className="flex items-center gap-3 px-4 py-3 rounded-lg text-error hover:bg-neutral-light w-full transition-colors text-sm sm:text-base"
         >
           <FiLogOut />
-          <span>Logout</span>
+          <span>{isLoggingOut ? 'Logging out...' : 'Logout'}</span>
         </button>
       </div>
     </div>

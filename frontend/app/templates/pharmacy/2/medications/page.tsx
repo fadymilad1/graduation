@@ -6,7 +6,9 @@ import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { FiClock, FiMapPin, FiPhoneCall, FiPlus, FiMinus, FiSearch, FiShoppingCart } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
-import { getSiteItem, setSiteItem, removeSiteItem } from '@/lib/storage'
+import { BrandLogo } from '@/components/pharmacy/BrandLogo'
+import { ProductImage } from '@/components/pharmacy/ProductImage'
+import { getSiteItem, setSiteItem, removeSiteItem, setSiteOwnerId } from '@/lib/storage'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 
@@ -18,6 +20,7 @@ type Product = {
   price: string
   inStock: boolean
   stock?: number
+  imageUrl?: string
 }
 
 type CartItem = { product: Product; quantity: number }
@@ -25,7 +28,7 @@ type CartItem = { product: Product; quantity: number }
 type PharmacySetup = {
   phone?: string
   address?: string
-  products?: Array<{ name: string; category?: string; description?: string; price?: string; inStock?: boolean; stock?: number }>
+  products?: Array<{ name: string; category?: string; description?: string; price?: string; inStock?: boolean; stock?: number; imageUrl?: string; image_url?: string }>
 }
 
 type BusinessInfo = {
@@ -55,19 +58,29 @@ const demoProducts: Product[] = [
 function Template2MedicationsContent() {
   const searchParams = useSearchParams()
   const isDemo = searchParams?.get('demo') === '1' || searchParams?.get('demo') === 'true'
+  const ownerId = searchParams?.get('owner') || ''
   const cartKey = isDemo ? 'pharmacy2_cart_demo' : 'pharmacy2_cart'
 
   const withDemo = (path: string) => {
-    if (!isDemo) return path
     const [base, hash] = path.split('#')
-    const sep = base.includes('?') ? '&' : '?'
-    return `${base}${sep}demo=1${hash ? `#${hash}` : ''}`
+    const [pathname, query = ''] = base.split('?')
+    const params = new URLSearchParams(query)
+    if (isDemo) params.set('demo', '1')
+    if (ownerId) params.set('owner', ownerId)
+    const nextQuery = params.toString()
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash ? `#${hash}` : ''}`
   }
 
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('All')
   const [cart, setCart] = useState<CartItem[]>([])
   const [pharmacyProducts, setPharmacyProducts] = useState<Product[]>([])
+
+  useEffect(() => {
+    if (ownerId) {
+      setSiteOwnerId(ownerId)
+    }
+  }, [ownerId])
 
   useEffect(() => {
     if (isDemo) return
@@ -85,9 +98,14 @@ function Template2MedicationsContent() {
           
           if (response.ok) {
             const data = await response.json()
+            const dataList = Array.isArray(data)
+              ? data
+              : Array.isArray((data as any)?.results)
+                ? (data as any).results
+                : []
             // Only use backend data if we have products
-            if (Array.isArray(data) && data.length > 0) {
-              const apiProducts: Product[] = data.map((p: any, idx: number) => ({
+            if (dataList.length > 0) {
+              const apiProducts: Product[] = dataList.map((p: any, idx: number) => ({
                 id: p.id?.toString() || `api-${idx}`,
                 name: p.name,
                 category: p.category || 'General',
@@ -95,6 +113,7 @@ function Template2MedicationsContent() {
                 price: `$${parseFloat(p.price || 0).toFixed(2)}`,
                 stock: typeof p.stock === 'number' ? p.stock : (p.stock ? parseInt(String(p.stock), 10) : undefined),
                 inStock: p.in_stock !== false && (typeof p.stock === 'number' ? p.stock > 0 : true),
+                imageUrl: p.image_url_resolved || p.image_url || '',
               }))
               setPharmacyProducts(apiProducts)
               loadedFromBackend = true
@@ -124,6 +143,7 @@ function Template2MedicationsContent() {
               price: p.price || '$0.00',
               stock,
               inStock: stock !== undefined ? stock > 0 : p.inStock !== false,
+              imageUrl: (p as any).imageUrl || (p as any).image_url || '',
             }
           })
         )
@@ -255,16 +275,14 @@ function Template2MedicationsContent() {
               <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center overflow-hidden border border-amber-300 shadow-sm">
                 {isDemo ? (
                   <Image src="/mod logo.png" alt="Logo" width={40} height={40} className="object-cover" />
-                ) : brand.logo ? (
-                  brand.logo.startsWith('data:') ? (
-                    <img src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} className="w-full h-full object-cover" />
-                  ) : (
-                    <Image src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} width={40} height={40} className="object-cover" />
-                  )
                 ) : (
-                  <div className="w-full h-full bg-[#7a5c2e] flex items-center justify-center text-white font-bold text-xs">
-                    {(brand.name || 'P').charAt(0).toUpperCase()}
-                  </div>
+                  <BrandLogo
+                    src={brand.logo}
+                    alt={`${brand.name || 'Pharmacy'} logo`}
+                    fallbackText={brand.name || 'P'}
+                    imageClassName="w-full h-full object-cover"
+                    fallbackClassName="w-full h-full bg-[#7a5c2e] flex items-center justify-center text-white font-bold text-xs"
+                  />
                 )}
               </div>
               <div className="leading-tight">
@@ -366,6 +384,15 @@ function Template2MedicationsContent() {
                 const quantity = cartItem?.quantity || 0
                 return (
                   <div key={product.id} className="rounded-2xl bg-white border-2 border-amber-200 p-6 hover:shadow-md transition-shadow">
+                    <div className="mb-4 h-36 overflow-hidden rounded-xl bg-amber-50">
+                      <ProductImage
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="h-full w-full object-cover"
+                        fallbackClassName="grid h-full w-full place-items-center bg-amber-50 text-amber-700"
+                        fallbackLabel={product.category || 'No product image'}
+                      />
+                    </div>
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div className="flex-1">
                         <div className="text-xs text-neutral-gray mb-1">{product.category}</div>

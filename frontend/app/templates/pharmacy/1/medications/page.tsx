@@ -5,8 +5,10 @@ import Link from 'next/link'
 import React, { useEffect, useMemo, useState, Suspense } from 'react'
 import { FiSearch, FiShoppingCart, FiPlus, FiMinus, FiClock, FiMapPin, FiPhoneCall } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
+import { BrandLogo } from '@/components/pharmacy/BrandLogo'
 import { useSearchParams } from 'next/navigation'
-import { getSiteItem, setSiteItem, removeSiteItem } from '@/lib/storage'
+import { ProductImage } from '@/components/pharmacy/ProductImage'
+import { getSiteItem, setSiteItem, removeSiteItem, setSiteOwnerId } from '@/lib/storage'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 
@@ -18,6 +20,7 @@ type Product = {
   price: string
   inStock: boolean
   stock?: number
+  imageUrl?: string
 }
 
 type CartItem = {
@@ -28,7 +31,7 @@ type CartItem = {
 type PharmacySetup = {
   phone?: string
   address?: string
-  products?: Array<{ name: string; category?: string; description?: string; price?: string; inStock?: boolean; stock?: number }>
+  products?: Array<{ name: string; category?: string; description?: string; price?: string; inStock?: boolean; stock?: number; imageUrl?: string; image_url?: string }>
 }
 
 type BusinessInfo = {
@@ -77,13 +80,17 @@ const defaultMedications: Product[] = [
 function MedicationsPageContent() {
   const searchParams = useSearchParams()
   const isDemo = searchParams?.get('demo') === '1' || searchParams?.get('demo') === 'true'
+  const ownerId = searchParams?.get('owner') || ''
   const queryCategory = searchParams?.get('category') || ''
   const cartKey = isDemo ? 'pharmacy_cart_demo' : 'pharmacy_cart'
   const withDemo = (path: string) => {
-    if (!isDemo) return path
     const [base, hash] = path.split('#')
-    const sep = base.includes('?') ? '&' : '?'
-    return `${base}${sep}demo=1${hash ? `#${hash}` : ''}`
+    const [pathname, query = ''] = base.split('?')
+    const params = new URLSearchParams(query)
+    if (isDemo) params.set('demo', '1')
+    if (ownerId) params.set('owner', ownerId)
+    const nextQuery = params.toString()
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash ? `#${hash}` : ''}`
   }
   
   const [searchQuery, setSearchQuery] = useState('')
@@ -92,6 +99,12 @@ function MedicationsPageContent() {
   const [inStockOnly, setInStockOnly] = useState(false)
   const [cart, setCart] = useState<CartItem[]>([])
   const [pharmacyProducts, setPharmacyProducts] = useState<Product[]>([])
+
+  useEffect(() => {
+    if (ownerId) {
+      setSiteOwnerId(ownerId)
+    }
+  }, [ownerId])
 
   useEffect(() => {
     if (!isDemo) {
@@ -123,6 +136,7 @@ function MedicationsPageContent() {
                   price: `$${parseFloat(p.price || 0).toFixed(2)}`,
                   stock: typeof p.stock === 'number' ? p.stock : (p.stock ? parseInt(String(p.stock), 10) : undefined),
                   inStock: p.in_stock !== false && (typeof p.stock === 'number' ? p.stock > 0 : true),
+                  imageUrl: p.image_url_resolved || p.image_url || '',
                 }))
                 setPharmacyProducts(apiProducts)
                 loadedFromBackend = true
@@ -154,6 +168,7 @@ function MedicationsPageContent() {
                   typeof (p as any).stock === 'number'
                     ? (p as any).stock > 0
                     : p.inStock !== false,
+                imageUrl: (p as any).imageUrl || (p as any).image_url || '',
               }))
             setPharmacyProducts(userProducts)
           } else {
@@ -376,16 +391,14 @@ function MedicationsPageContent() {
             <div className="w-10 h-10 rounded-xl bg-primary-light flex items-center justify-center overflow-hidden">
               {isDemo ? (
                 <Image src="/mod logo.png" alt="Logo" width={40} height={40} className="object-cover" />
-              ) : brand.logo ? (
-                brand.logo.startsWith('data:') ? (
-                  <img src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} className="w-full h-full object-cover" />
-                ) : (
-                  <Image src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} width={40} height={40} className="object-cover" />
-                )
               ) : (
-                <div className="w-full h-full bg-primary flex items-center justify-center text-white font-bold text-xs">
-                  {(brand.name || 'P').charAt(0).toUpperCase()}
-                </div>
+                <BrandLogo
+                  src={brand.logo}
+                  alt={`${brand.name || 'Pharmacy'} logo`}
+                  fallbackText={brand.name || 'P'}
+                  imageClassName="w-full h-full object-cover"
+                  fallbackClassName="w-full h-full bg-primary flex items-center justify-center text-white font-bold text-xs"
+                />
               )}
             </div>
             <div className="leading-tight">
@@ -560,6 +573,15 @@ function MedicationsPageContent() {
                   key={product.id}
                   className="rounded-2xl bg-white border border-neutral-border p-6 hover:shadow-md transition-shadow"
                 >
+                  <div className="mb-4 h-36 overflow-hidden rounded-xl bg-neutral-light/60">
+                    <ProductImage
+                      src={product.imageUrl}
+                      alt={product.name}
+                      className="h-full w-full object-cover"
+                      fallbackClassName="grid h-full w-full place-items-center bg-neutral-light/60 text-neutral-gray"
+                      fallbackLabel={product.category || 'No product image'}
+                    />
+                  </div>
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex-1">
                       <div className="text-xs text-neutral-gray mb-1">{product.category}</div>

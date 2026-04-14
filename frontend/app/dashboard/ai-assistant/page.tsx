@@ -5,8 +5,39 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Toggle } from '@/components/ui/Toggle'
 import { Input } from '@/components/ui/Input'
+import { Textarea } from '@/components/ui/Textarea'
 import { FiSend, FiMessageSquare, FiLock, FiDollarSign } from 'react-icons/fi'
 import { getScopedItem } from '@/lib/storage'
+
+const CATEGORY_KEYWORDS: Array<{ category: string; keywords: string[] }> = [
+  { category: 'Pain Relief', keywords: ['ibuprofen', 'paracetamol', 'acetaminophen', 'pain', 'headache'] },
+  { category: 'Vitamins', keywords: ['vitamin', 'omega', 'supplement', 'zinc', 'magnesium'] },
+  { category: 'Cold & Flu', keywords: ['cough', 'flu', 'cold', 'congestion', 'sore throat'] },
+  { category: 'Allergy', keywords: ['allergy', 'antihistamine', 'sneeze'] },
+  { category: 'Digestive Care', keywords: ['stomach', 'digestive', 'probiotic', 'acid'] },
+  { category: 'Diabetes Care', keywords: ['glucose', 'insulin', 'diabetic'] },
+]
+
+const suggestCategoryFromName = (name: string) => {
+  const normalized = name.toLowerCase()
+  const match = CATEGORY_KEYWORDS.find((entry) =>
+    entry.keywords.some((keyword) => normalized.includes(keyword)),
+  )
+  return match?.category || 'General Wellness'
+}
+
+const buildDescription = (productName: string, benefits: string) => {
+  const safeName = productName.trim() || 'This product'
+  const safeBenefits = benefits.trim() || 'daily wellness support'
+  return `${safeName} is designed to support ${safeBenefits}. Always follow package instructions and consult a licensed pharmacist for personalized guidance.`
+}
+
+const buildLayoutRecommendations = (pharmacyName: string) => [
+  `Lead with a strong hero message for ${pharmacyName || 'your pharmacy'} and a single primary CTA (Shop Medications).`,
+  'Move best-selling categories into the first fold to reduce drop-off on mobile.',
+  'Highlight trust indicators near checkout: licensed pharmacists, secure payment, and delivery ETA.',
+  'Use an offers ribbon for discounts and refill reminders to increase repeat orders.',
+]
 
 type ChatMessage = {
   id: number
@@ -20,6 +51,14 @@ export default function AIAssistantPage() {
   const [message, setMessage] = useState('')
   const [hasAIChatbot, setHasAIChatbot] = useState(false)
   const [userType, setUserType] = useState<'hospital' | 'pharmacy'>('hospital')
+  const [productName, setProductName] = useState('')
+  const [productBenefits, setProductBenefits] = useState('')
+  const [generatedDescription, setGeneratedDescription] = useState('')
+  const [suggestedCategory, setSuggestedCategory] = useState('')
+  const [pharmacyNameDraft, setPharmacyNameDraft] = useState('')
+  const [cityDraft, setCityDraft] = useState('')
+  const [autoFilledInfo, setAutoFilledInfo] = useState('')
+  const [layoutRecommendations, setLayoutRecommendations] = useState<string[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 1,
@@ -53,6 +92,30 @@ export default function AIAssistantPage() {
       setHasAIChatbot(templateId === 1 || templateId === 2)
     }
   }, [userType])
+
+  const handleGenerateDescription = () => {
+    setGeneratedDescription(buildDescription(productName, productBenefits))
+  }
+
+  const handleSuggestCategory = () => {
+    setSuggestedCategory(suggestCategoryFromName(productName))
+  }
+
+  const handleAutoFillInfo = () => {
+    const name = pharmacyNameDraft.trim() || 'Your Pharmacy'
+    const city = cityDraft.trim() || 'your city'
+    const template = [
+      `${name} is a patient-first pharmacy serving ${city} with trusted medications and pharmacist guidance.`,
+      `Address: Main medical district, ${city}.`,
+      'Phone: +20 100 000 0000.',
+      'Working hours: Mon-Sat 09:00-22:00, Sun 11:00-18:00.',
+    ]
+    setAutoFilledInfo(template.join('\n'))
+  }
+
+  const handleRecommendLayout = () => {
+    setLayoutRecommendations(buildLayoutRecommendations(pharmacyNameDraft))
+  }
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault()
@@ -222,6 +285,72 @@ export default function AIAssistantPage() {
               Send
             </Button>
           </form>
+        </Card>
+      )}
+
+      {hasAIChatbot && userType === 'pharmacy' && (
+        <Card className="p-6">
+          <h2 className="text-xl font-semibold text-neutral-dark mb-4">Pharmacy AI Support Tools</h2>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="rounded-lg border border-neutral-border p-4 space-y-3">
+              <h3 className="font-semibold text-neutral-dark">Generate Product Description</h3>
+              <Input
+                label="Product name"
+                value={productName}
+                onChange={(e) => setProductName(e.target.value)}
+                placeholder="Ibuprofen 400mg"
+              />
+              <Input
+                label="Benefits"
+                value={productBenefits}
+                onChange={(e) => setProductBenefits(e.target.value)}
+                placeholder="pain relief and fever reduction"
+              />
+              <div className="flex gap-2">
+                <Button type="button" onClick={handleGenerateDescription}>Generate</Button>
+                <Button type="button" variant="secondary" onClick={handleSuggestCategory}>Suggest Category</Button>
+              </div>
+              {suggestedCategory && (
+                <p className="text-sm text-neutral-gray">
+                  Suggested category: <span className="font-semibold text-neutral-dark">{suggestedCategory}</span>
+                </p>
+              )}
+              {generatedDescription && (
+                <Textarea value={generatedDescription} readOnly rows={4} label="AI Description" />
+              )}
+            </div>
+
+            <div className="rounded-lg border border-neutral-border p-4 space-y-3">
+              <h3 className="font-semibold text-neutral-dark">Auto-Fill Pharmacy Info</h3>
+              <Input
+                label="Pharmacy name"
+                value={pharmacyNameDraft}
+                onChange={(e) => setPharmacyNameDraft(e.target.value)}
+                placeholder="Medify Central Pharmacy"
+              />
+              <Input
+                label="City"
+                value={cityDraft}
+                onChange={(e) => setCityDraft(e.target.value)}
+                placeholder="Cairo"
+              />
+              <div className="flex gap-2">
+                <Button type="button" onClick={handleAutoFillInfo}>Auto-fill Content</Button>
+                <Button type="button" variant="secondary" onClick={handleRecommendLayout}>Recommend Layout</Button>
+              </div>
+              {autoFilledInfo && <Textarea value={autoFilledInfo} readOnly rows={5} label="Suggested business content" />}
+              {layoutRecommendations.length > 0 && (
+                <div className="rounded-lg bg-neutral-light p-3">
+                  <p className="text-sm font-semibold text-neutral-dark mb-2">Layout improvements</p>
+                  <ul className="space-y-1 text-sm text-neutral-gray">
+                    {layoutRecommendations.map((item) => (
+                      <li key={item}>- {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
         </Card>
       )}
 

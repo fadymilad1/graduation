@@ -1,11 +1,11 @@
-name,category,description,price,stock
-Amoxicillin 500mg Capsules,Antibiotic,Antibiotic for bacterial infections,35.00,50
-Paracetamol 500mg Tablets,Pain Relief,Pain and fever relief medication,4.99,100
-Ibuprofen 200mg Tablets,Pain Relief,Anti-inflammatory pain reliever,6.49,75
-Vitamin C 1000mg,Vitamins,Immune system support supplement,9.99,60
-Allergy Relief 24h,Allergy,Non-drowsy allergy relief tablets,13.99,40
-Saline Nasal Spray,Cold & Flu,Gentle nasal spray for congestion,3.99,80
-Cough Syrup 100ml,Cold & Flu,Cough suppressant and expectorant,8.50,45
-Aspirin 81mg,Pain Relief,Low-dose aspirin for heart health,5.99,90
-Multivitamin Daily,Vitamins,Complete daily multivitamin supplement,12.99,55
-Antacid Tablets,Digestive,Fast-acting heartburn relief,7.49,70
+Product Name,Category,Price,Stock Quantity,Description,Image
+Amoxicillin 500mg Capsules,Antibiotic,35.00,50,Antibiotic for bacterial infections,https://placehold.co/600x400/png?text=Amoxicillin
+Paracetamol 500mg Tablets,Pain Relief,4.99,100,Pain and fever relief medication,https://placehold.co/600x400/png?text=Paracetamol
+Ibuprofen 200mg Tablets,Pain Relief,6.49,75,Anti-inflammatory pain reliever,https://placehold.co/600x400/png?text=Ibuprofen
+Vitamin C 1000mg,Vitamins,9.99,60,Immune system support supplement,https://placehold.co/600x400/png?text=Vitamin+C
+Allergy Relief 24h,Allergy,13.99,40,Non-drowsy allergy relief tablets,
+Saline Nasal Spray,Cold & Flu,3.99,80,Gentle nasal spray for congestion,https://placehold.co/600x400/png?text=Saline+Spray
+Cough Syrup 100ml,Cold & Flu,8.50,45,Cough suppressant and expectorant,https://placehold.co/600x400/png?text=Cough+Syrup
+Aspirin 81mg,Pain Relief,5.99,90,Low-dose aspirin for heart health,https://placehold.co/600x400/png?text=Aspirin
+Multivitamin Daily,Vitamins,12.99,55,Complete daily multivitamin supplement,https://placehold.co/600x400/png?text=Multivitamin
+Antacid Tablets,Digestive,7.49,70,Fast-acting heartburn relief,https://placehold.co/600x400/png?text=Antacid

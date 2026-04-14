@@ -16,7 +16,10 @@ import {
   FiPlus,
 } from 'react-icons/fi'
 import { AIChatbot } from '@/components/pharmacy/AIChatbot'
+import { BrandLogo } from '@/components/pharmacy/BrandLogo'
+import { ProductImage } from '@/components/pharmacy/ProductImage'
 import { getSiteItem, setSiteItem, removeSiteItem, getStoredUser, setSiteOwnerId } from '@/lib/storage'
+import { getStoredPharmacyThemeSettings, isSectionEnabled } from '@/lib/pharmacyTheme'
 
 type PharmacySetup = {
   phone?: string
@@ -28,6 +31,8 @@ type PharmacySetup = {
     description?: string
     price?: string
     inStock?: boolean
+    imageUrl?: string
+    image_url?: string
   }>
 }
 
@@ -48,6 +53,7 @@ type Product = {
   description?: string
   price: string
   inStock: boolean
+  imageUrl?: string
 }
 
 type CartItem = { product: Product; quantity: number }
@@ -64,13 +70,17 @@ function safeJsonParse<T>(value: string | null): T | null {
 function Template2HomeContent() {
   const searchParams = useSearchParams()
   const isDemo = searchParams?.get('demo') === '1' || searchParams?.get('demo') === 'true'
+  const ownerId = searchParams?.get('owner') || ''
   const cartKey = isDemo ? 'pharmacy2_cart_demo' : 'pharmacy2_cart'
 
   const withDemo = (path: string) => {
-    if (!isDemo) return path
     const [base, hash] = path.split('#')
-    const sep = base.includes('?') ? '&' : '?'
-    return `${base}${sep}demo=1${hash ? `#${hash}` : ''}`
+    const [pathname, query = ''] = base.split('?')
+    const params = new URLSearchParams(query)
+    if (isDemo) params.set('demo', '1')
+    if (ownerId) params.set('owner', ownerId)
+    const nextQuery = params.toString()
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash ? `#${hash}` : ''}`
   }
 
   const [pharmacySetup, setPharmacySetup] = useState<PharmacySetup | null>(null)
@@ -80,34 +90,11 @@ function Template2HomeContent() {
   useEffect(() => {
     if (isDemo) return
     const user = getStoredUser()
-    if (user?.id) setSiteOwnerId(user.id)
+    if (ownerId) setSiteOwnerId(ownerId)
+    else if (user?.id) setSiteOwnerId(user.id)
     setPharmacySetup(safeJsonParse<PharmacySetup>(getSiteItem('pharmacySetup')))
     setBusinessInfo(safeJsonParse<BusinessInfo>(getSiteItem('businessInfo')))
-  }, [isDemo])
-
-    useEffect(() => {
-      if (isDemo) return
-      const localInfo = safeJsonParse<BusinessInfo>(getSiteItem('businessInfo'))
-      if (!localInfo?.logo) {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
-        if (token) {
-          const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
-          fetch(`${API_URL}/business-info/`, { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(r => r.ok ? r.json() : null)
-            .then(data => {
-              if (data?.logo_url) {
-                setBusinessInfo(prev => ({ ...(prev || {}), logo: data.logo_url }))
-                try {
-                  const existing = getSiteItem('businessInfo')
-                  const parsed = safeJsonParse<BusinessInfo>(existing) || {}
-                  setSiteItem('businessInfo', JSON.stringify({ ...parsed, logo: data.logo_url }))
-                } catch { /* ignore */ }
-              }
-            })
-            .catch(() => {})
-        }
-      }
-    }, [isDemo])
+  }, [isDemo, ownerId])
 
   useEffect(() => {
     const raw = isDemo ? localStorage.getItem(cartKey) : getSiteItem(cartKey)
@@ -152,6 +139,17 @@ function Template2HomeContent() {
     return { name, logo, about, phone, address, openHours }
   }, [businessInfo, pharmacySetup, isDemo])
 
+  const themeSettings = useMemo(
+    () => (isDemo ? null : getStoredPharmacyThemeSettings()),
+    [isDemo],
+  )
+
+  const showHero = isDemo || !themeSettings || isSectionEnabled(themeSettings, 'hero')
+  const showFeaturedProducts = isDemo || !themeSettings || isSectionEnabled(themeSettings, 'featuredProducts')
+  const showOffers = isDemo || !themeSettings || isSectionEnabled(themeSettings, 'offers')
+  const showContactInfo = isDemo || !themeSettings || isSectionEnabled(themeSettings, 'contactInfo')
+  const showMap = isDemo || !themeSettings || isSectionEnabled(themeSettings, 'map')
+
   const featured = useMemo<Product[]>(() => {
     if (isDemo) {
       return [
@@ -162,6 +160,7 @@ function Template2HomeContent() {
           description: 'Daily support for bone health and immunity.',
           price: '$15.99',
           inStock: true,
+          imageUrl: '/template-1.jpg',
         },
         {
           id: 'd2',
@@ -170,6 +169,7 @@ function Template2HomeContent() {
           description: 'Non-drowsy relief for seasonal allergies.',
           price: '$13.99',
           inStock: true,
+          imageUrl: '/template-2.jpg',
         },
         {
           id: 'd3',
@@ -178,6 +178,7 @@ function Template2HomeContent() {
           description: 'Essentials for home and travel.',
           price: '$19.99',
           inStock: true,
+          imageUrl: '/template-3.jpg',
         },
       ]
     }
@@ -191,6 +192,7 @@ function Template2HomeContent() {
         description: p.description,
         price: p.price || '$0.00',
         inStock: p.inStock !== false,
+        imageUrl: p.imageUrl || p.image_url || '',
       }))
       .slice(0, 3)
   }, [pharmacySetup, isDemo])
@@ -229,31 +231,33 @@ function Template2HomeContent() {
   return (
     <div className="min-h-screen font-serif bg-[radial-gradient(circle_at_20%_20%,rgba(250,242,222,0.9),transparent_45%),radial-gradient(circle_at_90%_10%,rgba(253,230,138,0.25),transparent_40%),linear-gradient(to_bottom,rgba(255,255,255,0.9),rgba(250,246,240,1))]">
       {/* Top bar */}
-      <div className="bg-[#2b2118] text-white">
-        <div className="mx-auto max-w-6xl px-4 py-2 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between text-sm">
-          <div className="flex items-center gap-2">
-            <FiClock className="text-amber-200" />
-            <span>{brand.openHours || (isDemo ? 'Mon–Sat 09:00–19:00' : '')}</span>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-            {brand.phone && (
-              <>
-                <a className="inline-flex items-center gap-2 hover:text-amber-200 transition-colors" href={`tel:${brand.phone}`}>
-                  <FiPhoneCall />
-                  <span>{brand.phone}</span>
-                </a>
-                {brand.address && <span className="hidden sm:inline opacity-60">•</span>}
-              </>
-            )}
-            {brand.address && (
-              <div className="inline-flex items-center gap-2">
-                <FiMapPin className="text-amber-200" />
-                <span className="truncate max-w-[28rem]">{brand.address}</span>
-              </div>
-            )}
+      {showContactInfo ? (
+        <div className="bg-[#2b2118] text-white">
+          <div className="mx-auto max-w-6xl px-4 py-2 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between text-sm">
+            <div className="flex items-center gap-2">
+              <FiClock className="text-amber-200" />
+              <span>{brand.openHours || (isDemo ? 'Mon–Sat 09:00–19:00' : '')}</span>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              {brand.phone && (
+                <>
+                  <a className="inline-flex items-center gap-2 hover:text-amber-200 transition-colors" href={`tel:${brand.phone}`}>
+                    <FiPhoneCall />
+                    <span>{brand.phone}</span>
+                  </a>
+                  {brand.address && <span className="hidden sm:inline opacity-60">•</span>}
+                </>
+              )}
+              {brand.address && (
+                <div className="inline-flex items-center gap-2">
+                  <FiMapPin className="text-amber-200" />
+                  <span className="truncate max-w-[28rem]">{brand.address}</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
       {/* Header */}
       <header className="sticky top-0 z-30 bg-white/80 backdrop-blur border-b border-neutral-border">
@@ -262,16 +266,14 @@ function Template2HomeContent() {
             <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center overflow-hidden border border-amber-300 shadow-sm">
               {isDemo ? (
                 <Image src="/mod logo.png" alt="Logo" width={44} height={44} className="object-cover" />
-              ) : brand.logo ? (
-                brand.logo.startsWith('data:') ? (
-                  <img src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} className="w-full h-full object-cover" />
-                ) : (
-                  <Image src={brand.logo} alt={`${brand.name || 'Pharmacy'} logo`} width={44} height={44} className="object-cover" />
-                )
               ) : (
-                <div className="w-full h-full bg-[#7a5c2e] flex items-center justify-center text-white font-bold text-xs">
-                  {(brand.name || 'P').charAt(0).toUpperCase()}
-                </div>
+                <BrandLogo
+                  src={brand.logo}
+                  alt={`${brand.name || 'Pharmacy'} logo`}
+                  fallbackText={brand.name || 'P'}
+                  imageClassName="w-full h-full object-cover"
+                  fallbackClassName="w-full h-full bg-[#7a5c2e] flex items-center justify-center text-white font-bold text-xs"
+                />
               )}
             </div>
             <div className="leading-tight">
@@ -282,8 +284,10 @@ function Template2HomeContent() {
 
           <nav className="hidden md:flex items-center gap-6 text-sm">
             <Link href={withDemo('/templates/pharmacy/2/services')} className="text-neutral-gray hover:text-neutral-dark">Services</Link>
-            <a href="#location" className="text-neutral-gray hover:text-neutral-dark">Location</a>
-            <Link href={withDemo('/templates/pharmacy/2/contact')} className="text-neutral-gray hover:text-neutral-dark">Contact</Link>
+            {showMap ? <a href="#location" className="text-neutral-gray hover:text-neutral-dark">Location</a> : null}
+            {showContactInfo ? (
+              <Link href={withDemo('/templates/pharmacy/2/contact')} className="text-neutral-gray hover:text-neutral-dark">Contact</Link>
+            ) : null}
             <Link href={withDemo('/templates/pharmacy/2/medications')} className="text-[#7a5c2e] font-semibold">Products</Link>
           </nav>
 
@@ -303,7 +307,8 @@ function Template2HomeContent() {
       </header>
 
       {/* Hero */}
-      <section className="relative overflow-hidden">
+      {showHero ? (
+        <section className="relative overflow-hidden">
         <div className="mx-auto max-w-6xl px-4 py-14 sm:py-18">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
             <div>
@@ -334,36 +339,26 @@ function Template2HomeContent() {
                 </Link>
               </div>
 
-              <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {[
-                  { k: 'Years', v: '20+' },
-                  { k: 'Support', v: '7 days' },
-                  { k: 'Pickup', v: 'Same day' },
-                ].map((s) => (
-                  <div key={s.k} className="rounded-xl bg-white border border-amber-200 px-4 py-3">
-                    <div className="text-xs text-neutral-gray tracking-wide">{s.k}</div>
-                    <div className="text-lg font-bold text-neutral-dark">{s.v}</div>
-                  </div>
-                ))}
-              </div>
+              {showOffers ? (
+                <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {[
+                    { k: 'Years', v: '20+' },
+                    { k: 'Support', v: '7 days' },
+                    { k: 'Pickup', v: 'Same day' },
+                  ].map((s) => (
+                    <div key={s.k} className="rounded-xl bg-white border border-amber-200 px-4 py-3">
+                      <div className="text-xs text-neutral-gray tracking-wide">{s.k}</div>
+                      <div className="text-lg font-bold text-neutral-dark">{s.v}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <div className="relative">
               <div className="rounded-3xl border-2 border-amber-200 bg-white p-3 shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
                 <div className="relative h-[320px] sm:h-[380px] rounded-2xl overflow-hidden bg-amber-50">
-                  {!isDemo && brand.logo ? (
-                    brand.logo.startsWith('data:') ? (
-                      <img
-                        src={brand.logo}
-                        alt={`${brand.name || 'Pharmacy'} hero`}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <Image src={brand.logo} alt={`${brand.name || 'Pharmacy'} hero`} fill className="object-cover" priority />
-                    )
-                  ) : (
-                    <Image src="/hero-pharmacy.jpg" alt="Classic pharmacy" fill className="object-cover" priority />
-                  )}
+                  <Image src="/hero-pharmacy.jpg" alt="Classic pharmacy" fill className="object-cover" priority />
                   <div className="absolute inset-0 bg-[linear-gradient(0deg,rgba(43,33,24,0.25),transparent_60%)]" />
                 </div>
               </div>
@@ -374,10 +369,12 @@ function Template2HomeContent() {
             </div>
           </div>
         </div>
-      </section>
+        </section>
+      ) : null}
 
       {/* Product Showcase */}
-      <section className="mx-auto max-w-6xl px-4 py-14">
+      {showFeaturedProducts ? (
+        <section className="mx-auto max-w-6xl px-4 py-14">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div>
             <h2 className="text-2xl sm:text-3xl font-bold text-neutral-dark tracking-tight">Product Showcase</h2>
@@ -399,6 +396,15 @@ function Template2HomeContent() {
             const quantity = cartItem?.quantity || 0
             return (
               <div key={p.id} className="rounded-2xl border-2 border-amber-200 bg-white p-6 hover:shadow-md transition-shadow">
+                <div className="mb-4 h-36 overflow-hidden rounded-xl bg-amber-50">
+                  <ProductImage
+                    src={p.imageUrl}
+                    alt={p.name}
+                    className="h-full w-full object-cover"
+                    fallbackClassName="grid h-full w-full place-items-center bg-amber-50 text-amber-700"
+                    fallbackLabel={p.category || 'No product image'}
+                  />
+                </div>
                 <div className="text-xs text-neutral-gray">{p.category}</div>
                 <div className="mt-1 font-semibold text-neutral-dark text-lg">{p.name}</div>
                 {p.description && <div className="mt-2 text-sm text-neutral-gray">{p.description}</div>}
@@ -448,6 +454,7 @@ function Template2HomeContent() {
           })}
         </div>
       </section>
+      ) : null}
 
       {/* Services preview (full page is /services) */}
       <section className="bg-white/70 border-y border-neutral-border">
@@ -479,7 +486,8 @@ function Template2HomeContent() {
       </section>
 
       {/* Location Map */}
-      <section id="location" className="mx-auto max-w-6xl px-4 py-14">
+      {showMap ? (
+        <section id="location" className="mx-auto max-w-6xl px-4 py-14">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div>
             <h2 className="text-2xl sm:text-3xl font-bold text-neutral-dark">Location Map</h2>
@@ -506,10 +514,12 @@ function Template2HomeContent() {
             />
           </div>
         </div>
-      </section>
+        </section>
+      ) : null}
 
       {/* Contact CTA (full page is /contact) */}
-      <section className="bg-gradient-to-br from-white to-amber-50 border-t border-neutral-border">
+      {showContactInfo ? (
+        <section className="bg-gradient-to-br from-white to-amber-50 border-t border-neutral-border">
         <div className="mx-auto max-w-6xl px-4 py-14">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div>
@@ -547,7 +557,8 @@ function Template2HomeContent() {
             </div>
           </div>
         </div>
-      </section>
+        </section>
+      ) : null}
 
       <footer className="border-t border-neutral-border bg-white">
         <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-neutral-gray flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">

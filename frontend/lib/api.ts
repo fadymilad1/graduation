@@ -5,6 +5,8 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost
 export interface ApiResponse<T> {
   data?: T
   error?: string
+  status?: number
+  errorDetails?: unknown
 }
 
 export interface ChatbotAssistantPayload {
@@ -22,6 +24,34 @@ export interface ChatbotAssistantPayload {
 export interface ChatbotResponsePayload {
   conversation_id: string
   assistant: ChatbotAssistantPayload
+}
+
+function extractErrorMessage(payload: unknown): string {
+  if (typeof payload === 'string') {
+    return payload
+  }
+
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return 'An error occurred'
+  }
+
+  const data = payload as Record<string, unknown>
+
+  if (typeof data.error === 'string' && data.error.trim()) return data.error
+  if (typeof data.detail === 'string' && data.detail.trim()) return data.detail
+
+  if (Array.isArray(data.non_field_errors) && typeof data.non_field_errors[0] === 'string') {
+    return data.non_field_errors[0]
+  }
+
+  const firstField = Object.keys(data)[0]
+  if (!firstField) return 'An error occurred'
+
+  const firstValue = data[firstField]
+  if (typeof firstValue === 'string' && firstValue.trim()) return firstValue
+  if (Array.isArray(firstValue) && typeof firstValue[0] === 'string') return firstValue[0]
+
+  return 'An error occurred'
 }
 
 // Get auth token from localStorage
@@ -62,15 +92,18 @@ export const apiRequest = async <T>(
 
     if (!response.ok) {
       return {
-        error: data.error || data.detail || 'An error occurred',
+        error: extractErrorMessage(data),
+        status: response.status,
+        errorDetails: data,
       }
     }
 
-    return { data }
+    return { data, status: response.status }
   } catch (error) {
     console.error('API request error:', error)
     return {
       error: 'Network error. Please check your connection.',
+      status: 0,
     }
   }
 }
@@ -127,6 +160,50 @@ export const authApi = {
       name: string
       business_type: string
     }>('/auth/me/')
+  },
+
+  logout: async (payload: { refresh?: string; all_devices?: boolean }) => {
+    return apiRequest<{ message: string }>('/auth/logout/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  deleteAccount: async (payload: {
+    email: string
+    password: string
+    confirmation_text: string
+  }) => {
+    return apiRequest<{ message: string }>('/auth/delete-account/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  forgotPassword: async (email: string) => {
+    return apiRequest<{ message: string }>('/auth/forgot-password/', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    })
+  },
+
+  validatePasswordResetToken: async (uid: string, token: string) => {
+    return apiRequest<{ valid: boolean }>('/auth/password-reset/validate/', {
+      method: 'POST',
+      body: JSON.stringify({ uid, token }),
+    })
+  },
+
+  resetPassword: async (payload: {
+    uid: string
+    token: string
+    password: string
+    password_confirm: string
+  }) => {
+    return apiRequest<{ message: string }>('/auth/password-reset/confirm/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
   },
 }
 
